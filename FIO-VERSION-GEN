@@ -21,7 +21,7 @@ elif test -d .git -o -f .git &&
 		VN="$VN-sea-dirty" ;;
 	esac
 then
-	VN=$VN
+	VN=$VN-sea
 else
 	VN="$DEF_VER"
 fi
