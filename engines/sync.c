@@ -36,6 +36,8 @@ struct syncio_data {
 struct psyncv2_options {
 	void *pad;
 	unsigned int hipri;
+    unsigned int hipri_percentage;
+    unsigned int hipri_count;
 };
 
 static struct fio_option options[] = {
@@ -45,6 +47,17 @@ static struct fio_option options[] = {
 		.type	= FIO_OPT_STR_SET,
 		.off1	= offsetof(struct psyncv2_options, hipri),
 		.help	= "Set RWF_HIPRI for pwritev2/preadv2",
+		.category = FIO_OPT_C_ENGINE,
+		.group	= FIO_OPT_G_INVALID,
+	},
+	{
+		.name	= "hipri_percentage",
+		.lname	= "RWF_HIPRI_PERCENTAGE",
+		.type	= FIO_OPT_INT,
+		.off1	= offsetof(struct psyncv2_options, hipri_percentage),
+		.minval	= 1,
+		.maxval	= 100,
+		.help	= "Split the hipri bit for IO",
 		.category = FIO_OPT_C_ENGINE,
 		.group	= FIO_OPT_G_INVALID,
 	},
@@ -133,7 +146,24 @@ static int fio_pvsyncio2_queue(struct thread_data *td, struct io_u *io_u)
 	fio_ro_check(td, io_u);
 
 	if (o->hipri)
-		flags |= RWF_HIPRI;
+    {
+        if (o->hipri_percentage)
+        {
+            if (++o->hipri_count % 100/o->hipri_percentage)
+            {
+                dprint(FD_IO, "Disable RWF_HIPRI\n");
+            }
+            else
+            {
+                dprint(FD_IO, "Enable RWF_HIPRI\n");
+                flags |= RWF_HIPRI;
+            } 
+        }
+        else
+        {
+            flags |= RWF_HIPRI;
+        }
+    }
 
 	iov->iov_base = io_u->xfer_buf;
 	iov->iov_len = io_u->xfer_buflen;
@@ -357,7 +387,8 @@ static int fio_vsyncio_commit(struct thread_data *td)
 static int fio_vsyncio_init(struct thread_data *td)
 {
 	struct syncio_data *sd;
-
+    struct psyncv2_options *o = td->eo;
+    
 	sd = malloc(sizeof(*sd));
 	memset(sd, 0, sizeof(*sd));
 	sd->last_offset = -1ULL;
@@ -365,6 +396,9 @@ static int fio_vsyncio_init(struct thread_data *td)
 	sd->io_us = malloc(td->o.iodepth * sizeof(struct io_u *));
 
 	td->io_ops_data = sd;
+
+    o->hipri_count = 0;
+   
 	return 0;
 }
 
