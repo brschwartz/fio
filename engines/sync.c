@@ -147,7 +147,7 @@ static int fio_pvsyncio2_queue(struct thread_data *td, struct io_u *io_u)
 
 	if (o->hipri)
     {
-        if (o->hipri_percentage)
+        if ((o->hipri_percentage) && (io_u->ddir == DDIR_READ))
         {
             if (++o->hipri_count % 100/o->hipri_percentage)
             {
