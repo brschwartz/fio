@@ -272,18 +272,24 @@ static int fio_libaio_commit(struct thread_data *td)
         if (fio_option_is_set(o, ioprio) ||
             fio_option_is_set(o, ioprio_class)) {
 
-            if (eo->prio_percent) {
-                if ((++eo->prio_io_count  % 100/eo->prio_percent) == 0) {
-                    dprint(FD_IO, "Enable PRIO \n");
-                    ioprio_set(IOPRIO_WHO_PROCESS, 0, o->ioprio_class, o->ioprio);
+            if ( io_us[0]->ddir == DDIR_READ) { //What if there is more than one request?
+                if (eo->prio_percent) {
+                    if ((++eo->prio_io_count  % 100/eo->prio_percent) == 0) {
+                        dprint(FD_IO, "Enable PRIO \n");
+                        ioprio_set(IOPRIO_WHO_PROCESS, 0, o->ioprio_class, o->ioprio);
+                    } else {
+                        dprint(FD_IO, "Disable PRIO \n");
+                        ioprio_set(IOPRIO_WHO_PROCESS, 0, 0, 0);
+                    } 
                 }
-                else
-                {
-                    dprint(FD_IO, "Disable PRIO \n");
-                    ioprio_set(IOPRIO_WHO_PROCESS, 0, 0, 0);
-                } 
+            } else {
+                // This is here so if previous READ turned this off. 
+                // This will make sure the behavior is consistant. 
+                ioprio_set(IOPRIO_WHO_PROCESS, 0, o->ioprio_class, o->ioprio);
             }
         }
+
+        dprint(FD_IO, "Submitted %ld IO request blocks\n", nr);
 
 		ret = io_submit(ld->aio_ctx, nr, iocbs);
 		if (ret > 0) {
