@@ -42,7 +42,6 @@ struct libaio_options {
 	void *pad;
 	unsigned int userspace_reap;
     unsigned int prio_percent; 
-    unsigned int prio_io_count;
 };
 
 static struct fio_option options[] = {
@@ -274,7 +273,7 @@ static int fio_libaio_commit(struct thread_data *td)
 
             if ( io_us[0]->ddir == DDIR_READ) { //What if there is more than one request?
                 if (eo->prio_percent) {
-                    if ((++eo->prio_io_count  % 100/eo->prio_percent) == 0) {
+                    if ((rand()%100 >= eo->prio_percent) == 0) {
                         dprint(FD_IO, "Enable PRIO \n");
                         ioprio_set(IOPRIO_WHO_PROCESS, 0, o->ioprio_class, o->ioprio);
                     } else {
@@ -399,8 +398,6 @@ static int fio_libaio_init(struct thread_data *td)
 	ld->aio_events = calloc(ld->entries, sizeof(struct io_event));
 	ld->iocbs = calloc(ld->entries, sizeof(struct iocb *));
 	ld->io_us = calloc(ld->entries, sizeof(struct io_u *));
-
-    o->prio_io_count = 0;
 
 	td->io_ops_data = ld;
 	return 0;
