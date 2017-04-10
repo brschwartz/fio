@@ -37,7 +37,6 @@ struct psyncv2_options {
 	void *pad;
 	unsigned int hipri;
     unsigned int hipri_percentage;
-    unsigned int hipri_count;
 };
 
 static struct fio_option options[] = {
@@ -149,20 +148,14 @@ static int fio_pvsyncio2_queue(struct thread_data *td, struct io_u *io_u)
     {
         if ((o->hipri_percentage) && (io_u->ddir == DDIR_READ))
         {
-            if (++o->hipri_count % 100/o->hipri_percentage)
-            {
+            if ((rand()%100 <= o->hipri_percentage) == 0) {
                 dprint(FD_IO, "Disable RWF_HIPRI\n");
-            }
-            else
-            {
+            } else {
                 dprint(FD_IO, "Enable RWF_HIPRI\n");
                 flags |= RWF_HIPRI;
             } 
-        }
-        else
-        {
+        } else
             flags |= RWF_HIPRI;
-        }
     }
 
 	iov->iov_base = io_u->xfer_buf;
@@ -396,8 +389,6 @@ static int fio_vsyncio_init(struct thread_data *td)
 	sd->io_us = malloc(td->o.iodepth * sizeof(struct io_u *));
 
 	td->io_ops_data = sd;
-
-    o->hipri_count = 0;
    
 	return 0;
 }
