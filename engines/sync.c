@@ -380,7 +380,6 @@ static int fio_vsyncio_commit(struct thread_data *td)
 static int fio_vsyncio_init(struct thread_data *td)
 {
 	struct syncio_data *sd;
-    struct psyncv2_options *o = td->eo;
     
 	sd = malloc(sizeof(*sd));
 	memset(sd, 0, sizeof(*sd));
