@@ -292,7 +292,7 @@ static int fio_libaio_commit(struct thread_data *td)
                 ioprio_set(IOPRIO_WHO_PROCESS, 0, o->ioprio_class, o->ioprio);
                 io_us[0]->priorityBit = 1;
             }
-            printf("PRIORITY BIT: %d\n", io_us[0]->priorityBit);
+            
         }
 
 
