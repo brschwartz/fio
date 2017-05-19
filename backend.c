@@ -436,6 +436,8 @@ static int wait_for_completions(struct thread_data *td, struct timeval *time)
 	int min_evts = 0;
 	int ret;
 
+
+
 	if (td->flags & TD_F_REGROW_LOGS)
 		return io_u_quiesce(td);
 
@@ -466,8 +468,9 @@ int io_queue_event(struct thread_data *td, struct io_u *io_u, int *ret,
 {
 	int ret2;
 
+
 	switch (*ret) {
-	case FIO_Q_COMPLETED:
+	case FIO_Q_COMPLETED:		
 		if (io_u->error) {
 			*ret = -io_u->error;
 			clear_io_u(td, io_u);
@@ -519,6 +522,7 @@ sync_done:
 		if (td->flags & TD_F_REGROW_LOGS)
 			regrow_logs(td);
 
+
 		/*
 		 * when doing I/O (not when verifying),
 		 * check for any errors that are to be ignored
@@ -527,7 +531,7 @@ sync_done:
 			break;
 
 		return 0;
-	case FIO_Q_QUEUED:
+	case FIO_Q_QUEUED:		
 		/*
 		 * if the engine doesn't have a commit hook,
 		 * the io_u is really queued. if it does have such

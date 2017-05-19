@@ -1731,6 +1731,8 @@ static void account_io_completion(struct thread_data *td, struct io_u *io_u,
 	if (td->parent)
 		td = td->parent;
 
+	td->priorityBit = io_u->priorityBit;
+
 	if (!td->o.stats)
 		return;
 
@@ -1759,7 +1761,8 @@ static void account_io_completion(struct thread_data *td, struct io_u *io_u,
 	}
 
 	if (ddir_rw(idx)) {
-		if (!td->o.disable_clat) {
+		
+		if (!td->o.disable_clat) {						
 			add_clat_sample(td, idx, lusec, bytes, io_u->offset);
 			io_u_mark_latency(td, lusec);
 		}

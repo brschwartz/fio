@@ -41,6 +41,7 @@ struct io_sample {
 	union io_sample_data data;
 	uint32_t __ddir;
 	uint32_t bs;
+	unsigned int priorityBit;
 };
 
 struct io_sample_offset {

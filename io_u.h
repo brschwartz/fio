@@ -31,6 +31,7 @@ enum {
  * The io unit
  */
 struct io_u {
+	unsigned int priorityBit;
 	struct timeval start_time;
 	struct timeval issue_time;
 
