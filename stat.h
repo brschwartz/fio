@@ -150,6 +150,7 @@ struct thread_stat {
 	char description[FIO_JOBDESC_SIZE];
 	uint32_t members;
 	uint32_t unified_rw_rep;
+	uint32_t priorityBit;
 
 	/*
 	 * bandwidth and latency stats
@@ -159,6 +160,7 @@ struct thread_stat {
 	struct io_stat lat_stat[DDIR_RWDIR_CNT]; /* total latency */
 	struct io_stat bw_stat[DDIR_RWDIR_CNT]; /* bandwidth stats */
 	struct io_stat iops_stat[DDIR_RWDIR_CNT]; /* IOPS stats */
+	struct io_stat clat_prio_stat[DDIR_RWDIR_CNT];
 
 	/*
 	 * fio system usage accounting
@@ -171,9 +173,10 @@ struct thread_stat {
 	/*
 	 * IO depth and latency stats
 	 */
-	uint64_t clat_percentiles;
+	uint64_t clat_percentiles;	
 	uint64_t percentile_precision;
 	fio_fp64_t percentile_list[FIO_IO_U_LIST_MAX_LEN];
+	fio_fp64_t prio_percentile_list[FIO_IO_U_LIST_MAX_LEN];
 
 	uint32_t io_u_map[FIO_IO_U_MAP_NR];
 	uint32_t io_u_submit[FIO_IO_U_MAP_NR];
@@ -181,6 +184,7 @@ struct thread_stat {
 	uint32_t io_u_lat_u[FIO_IO_U_LAT_U_NR];
 	uint32_t io_u_lat_m[FIO_IO_U_LAT_M_NR];
 	uint32_t io_u_plat[DDIR_RWDIR_CNT][FIO_IO_U_PLAT_NR];
+	uint32_t io_u_plat_prio[DDIR_RWDIR_CNT][FIO_IO_U_PLAT_NR];
 	uint32_t pad;
 
 	uint64_t total_io_u[DDIR_RWDIR_CNT];
@@ -233,7 +237,7 @@ struct thread_stat {
 		uint64_t *ss_bw_data;
 		uint64_t pad5;
 	};
-} __attribute__((packed));
+}; //__attribute__((packed));
 
 struct jobs_eta {
 	uint32_t nr_running;

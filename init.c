@@ -1352,6 +1352,7 @@ static int add_job(struct thread_data *td, const char *jobname, int job_add_num,
 
 	for (i = 0; i < DDIR_RWDIR_CNT; i++) {
 		td->ts.clat_stat[i].min_val = ULONG_MAX;
+		td->ts.clat_prio_stat[i].min_val = ULONG_MAX;
 		td->ts.slat_stat[i].min_val = ULONG_MAX;
 		td->ts.lat_stat[i].min_val = ULONG_MAX;
 		td->ts.bw_stat[i].min_val = ULONG_MAX;
