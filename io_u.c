@@ -581,8 +581,8 @@ static unsigned int __get_next_buflen(struct thread_data *td, struct io_u *io_u,
 		power_2 = is_power_of_2(minbs);
 		if (!td->o.bs_unaligned && power_2)
 			buflen &= ~(minbs - 1);
-		else if (!td->o.bs_unaligned && !power_2) 
-			buflen -= buflen % minbs; 
+		else if (!td->o.bs_unaligned && !power_2)
+			buflen -= buflen % minbs;
 	} while (!io_u_fits(td, io_u, buflen));
 
 	return buflen;
@@ -1761,8 +1761,8 @@ static void account_io_completion(struct thread_data *td, struct io_u *io_u,
 	}
 
 	if (ddir_rw(idx)) {
-		
-		if (!td->o.disable_clat) {								
+
+		if (!td->o.disable_clat) {
 			add_clat_sample(td, idx, lusec, bytes, io_u->offset);
 			io_u_mark_latency(td, lusec);
 		}

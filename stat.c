@@ -206,7 +206,7 @@ static void show_clat_percentiles(unsigned int *io_u_plat, unsigned long nr,
 	int is_last, per_line, scale_down;
 	char fmt[32];
 
-	len = calc_clat_percentiles(io_u_plat, nr, plist, &ovals, &maxv, &minv);	
+	len = calc_clat_percentiles(io_u_plat, nr, plist, &ovals, &maxv, &minv);
 	if (!len)
 		goto out;
 
@@ -430,14 +430,14 @@ static void show_ddir_status(struct group_run_stats *rs, struct thread_stat *ts,
 		display_lat(" PRIO clat", min, max, mean, dev, out);
 
 
-	if (ts->clat_percentiles) {				
+	if (ts->clat_percentiles) {
 		show_clat_percentiles(ts->io_u_plat[ddir],
 					ts->clat_stat[ddir].samples,
 					ts->percentile_list,
-					ts->percentile_precision, out);		
-		
+					ts->percentile_precision, out);
 
-		if (ddir == DDIR_READ) {			
+
+		if (ddir == DDIR_READ) {
 			show_clat_percentiles(ts->io_u_plat_prio[ddir],
 						ts->clat_prio_stat[ddir].samples,
 						ts->percentile_list,
@@ -726,7 +726,7 @@ static void show_thread_status_normal(struct thread_stat *ts,
 
 	if (!ddir_rw_sum(ts->io_bytes) && !ddir_rw_sum(ts->total_io_u))
 		return;
-		
+
 	memset(time_buf, 0, sizeof(time_buf));
 
 	time(&time_p);
@@ -1400,7 +1400,7 @@ struct json_object *show_thread_status(struct thread_stat *ts,
 }
 
 static void sum_stat(struct io_stat *dst, struct io_stat *src, bool first)
-{	
+{
 	double mean, S;
 
 	if (src->samples == 0)
@@ -1431,7 +1431,7 @@ static void sum_stat(struct io_stat *dst, struct io_stat *src, bool first)
 
 	dst->samples += src->samples;
 	dst->mean.u.f = mean;
-	dst->S.u.f = S;	
+	dst->S.u.f = S;
 }
 
 void sum_group_stats(struct group_run_stats *dst, struct group_run_stats *src)
@@ -1463,8 +1463,8 @@ void sum_thread_stats(struct thread_stat *dst, struct thread_stat *src,
 {
 	int l, k;
 
-	for (l = 0; l < DDIR_RWDIR_CNT; l++) {		
-		if (!dst->unified_rw_rep) {			
+	for (l = 0; l < DDIR_RWDIR_CNT; l++) {
+		if (!dst->unified_rw_rep) {
 			sum_stat(&dst->clat_stat[l], &src->clat_stat[l], first);
 			sum_stat(&dst->clat_prio_stat[l], &src->clat_prio_stat[l], first);
 			sum_stat(&dst->slat_stat[l], &src->slat_stat[l], first);
@@ -1474,8 +1474,8 @@ void sum_thread_stats(struct thread_stat *dst, struct thread_stat *src,
 			dst->io_bytes[l] += src->io_bytes[l];
 
 			if (dst->runtime[l] < src->runtime[l])
-				dst->runtime[l] = src->runtime[l];			
-		} else {			
+				dst->runtime[l] = src->runtime[l];
+		} else {
 			sum_stat(&dst->clat_stat[0], &src->clat_stat[l], first);
 			sum_stat(&dst->clat_prio_stat[0], &src->clat_prio_stat[l], first);
 			sum_stat(&dst->slat_stat[0], &src->slat_stat[l], first);
@@ -1493,7 +1493,7 @@ void sum_thread_stats(struct thread_stat *dst, struct thread_stat *src,
 			 */
 			first = false;
 		}
-	}		
+	}
 	dst->usr_time += src->usr_time;
 	dst->sys_time += src->sys_time;
 	dst->ctx += src->ctx;
@@ -2324,16 +2324,15 @@ void add_agg_sample(union io_sample_data data, enum fio_ddir ddir, unsigned int 
 static void add_clat_percentile_sample(struct thread_stat *ts,
 				unsigned long usec, enum fio_ddir ddir)
 {
-	unsigned int idx = plat_val_to_idx(usec);	
-	assert(idx < FIO_IO_U_PLAT_NR);	
+	unsigned int idx = plat_val_to_idx(usec);
+	assert(idx < FIO_IO_U_PLAT_NR);
 
-	ts->io_u_plat[ddir][idx]++;	
+	ts->io_u_plat[ddir][idx]++;
 
-	if (ts->priorityBit && ddir == DDIR_READ) {	
+	if (ts->priorityBit && ddir == DDIR_READ) {
 
 		ts->io_u_plat_prio[ddir][idx]++;
-		ts->priorityBit = 0;		
-		printf("PRIO VALUE: %d\n", usec);
+		ts->priorityBit = 0;
 	}
 }
 
@@ -2342,13 +2341,13 @@ void add_clat_sample(struct thread_data *td, enum fio_ddir ddir,
 {
 	unsigned long elapsed, this_window;
 	struct thread_stat *ts = &td->ts;
-	struct io_log *iolog = td->clat_hist_log;	
+	struct io_log *iolog = td->clat_hist_log;
 
 	td_io_u_lock(td);
 
 	add_stat_sample(&ts->clat_stat[ddir], usec);
 
-	if (td->priorityBit && ddir == DDIR_READ) {		
+	if (td->priorityBit && ddir == DDIR_READ) {
 		add_stat_sample(&ts->clat_prio_stat[ddir], usec);
 	}
 
@@ -2359,11 +2358,11 @@ void add_clat_sample(struct thread_data *td, enum fio_ddir ddir,
 	if (ts->clat_percentiles) {
 		if (td->priorityBit && ddir == DDIR_READ) {
 			ts->priorityBit = td->priorityBit;
-		}		
+		}
 		add_clat_percentile_sample(ts, usec, ddir);
 	}
 
-	if (iolog && iolog->hist_msec) {		
+	if (iolog && iolog->hist_msec) {
 		struct io_hist *hw = &iolog->hist_window[ddir];
 
 		hw->samples++;
@@ -2371,7 +2370,7 @@ void add_clat_sample(struct thread_data *td, enum fio_ddir ddir,
 		if (!hw->hist_last)
 			hw->hist_last = elapsed;
 		this_window = elapsed - hw->hist_last;
-		
+
 		if (this_window >= iolog->hist_msec) {
 			unsigned int *io_u_plat;
 			struct io_u_plat_entry *dst;
