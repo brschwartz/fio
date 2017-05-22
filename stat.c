@@ -427,7 +427,7 @@ static void show_ddir_status(struct group_run_stats *rs, struct thread_stat *ts,
 	if (calc_lat(&ts->lat_stat[ddir], &min, &max, &mean, &dev))
 		display_lat(" lat", min, max, mean, dev, out);
 	if (calc_lat(&ts->clat_prio_stat[ddir], &min, &max, &mean, &dev) && ddir == DDIR_READ)
-		display_lat(" PRIO clat", min, max, mean, dev, out);
+		display_lat(" PRIO_clat", min, max, mean, dev, out);
 
 
 	if (ts->clat_percentiles) {
@@ -436,8 +436,9 @@ static void show_ddir_status(struct group_run_stats *rs, struct thread_stat *ts,
 					ts->percentile_list,
 					ts->percentile_precision, out);
 
-
+        // Add 'if prio option is set' somehow
 		if (ddir == DDIR_READ) {
+			log_buf(out, "    clat_prio\n");
 			show_clat_percentiles(ts->io_u_plat_prio[ddir],
 						ts->clat_prio_stat[ddir].samples,
 						ts->percentile_list,
@@ -990,6 +991,54 @@ static void add_ddir_status_json(struct thread_stat *ts,
 		json_object_add_value_int(clat_bins_object, "FIO_IO_U_PLAT_VAL", FIO_IO_U_PLAT_VAL);
 		json_object_add_value_int(clat_bins_object, "FIO_IO_U_PLAT_NR", FIO_IO_U_PLAT_NR);
 	}
+
+	// START of PRIO CLAT
+
+    if (ddir == DDIR_READ) {
+	    if (!calc_lat(&ts->clat_prio_stat[ddir], &min, &max, &mean, &dev)) {
+			min = max = 0;
+			mean = dev = 0.0;
+		}
+		tmp_object = json_create_object();
+		json_object_add_value_object(dir_object, "clat_prio", tmp_object);
+		json_object_add_value_int(tmp_object, "min", min);
+		json_object_add_value_int(tmp_object, "max", max);
+		json_object_add_value_float(tmp_object, "mean", mean);
+		json_object_add_value_float(tmp_object, "stddev", dev);
+
+		if (ts->clat_percentiles) {
+			len = calc_clat_percentiles(ts->io_u_plat_prio[ddir],
+						ts->clat_prio_stat[ddir].samples,
+						ts->percentile_list, &ovals, &maxv,
+						&minv);
+		} else
+			len = 0;
+
+		percentile_object = json_create_object();
+		json_object_add_value_object(tmp_object, "percentile", percentile_object);
+		for (i = 0; i < FIO_IO_U_LIST_MAX_LEN; i++) {
+			if (i >= len) {
+				json_object_add_value_int(percentile_object, "0.00", 0);
+				continue;
+			}
+			snprintf(buf, sizeof(buf), "%f", ts->percentile_list[i].u.f);
+			json_object_add_value_int(percentile_object, (const char *)buf, ovals[i]);
+		}
+
+		if (output_format & FIO_OUTPUT_JSON_PLUS) {
+			clat_bins_object = json_create_object();
+			json_object_add_value_object(tmp_object, "bins", clat_bins_object);
+			for(i = 0; i < FIO_IO_U_PLAT_NR; i++) {
+				snprintf(buf, sizeof(buf), "%d", i);
+				json_object_add_value_int(clat_bins_object, (const char *)buf, ts->io_u_plat_prio[ddir][i]);
+			}
+			json_object_add_value_int(clat_bins_object, "FIO_IO_U_PLAT_BITS", FIO_IO_U_PLAT_BITS);
+			json_object_add_value_int(clat_bins_object, "FIO_IO_U_PLAT_VAL", FIO_IO_U_PLAT_VAL);
+			json_object_add_value_int(clat_bins_object, "FIO_IO_U_PLAT_NR", FIO_IO_U_PLAT_NR);
+		}
+    }
+
+	// END OF PRIO CLAT
 
 	if (!calc_lat(&ts->lat_stat[ddir], &min, &max, &mean, &dev)) {
 		min = max = 0;
