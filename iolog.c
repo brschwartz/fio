@@ -725,7 +725,7 @@ static void flush_hist_samples(FILE *f, int hist_coarseness, void *samples,
 	unsigned int *io_u_plat_before;
 
 	int stride = 1 << hist_coarseness;
-	
+
 	if (!sample_size)
 		return;
 
@@ -1087,13 +1087,13 @@ void flush_log(struct io_log *log, bool do_append)
 
 		cur_log = flist_first_entry(&log->io_logs, struct io_logs, list);
 		flist_del_init(&cur_log->list);
-		
+
 		if (log->td && log == log->td->clat_hist_log)
 			flush_hist_samples(f, log->hist_coarseness, cur_log->log,
 			                   log_sample_sz(log, cur_log));
 		else
 			flush_samples(f, cur_log->log, log_sample_sz(log, cur_log));
-		
+
 		sfree(cur_log);
 	}
 
