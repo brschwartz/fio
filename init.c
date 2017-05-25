@@ -1352,6 +1352,7 @@ static int add_job(struct thread_data *td, const char *jobname, int job_add_num,
 
 	for (i = 0; i < DDIR_RWDIR_CNT; i++) {
 		td->ts.clat_stat[i].min_val = ULONG_MAX;
+		td->ts.clat_prio_stat[i].min_val = ULONG_MAX;
 		td->ts.slat_stat[i].min_val = ULONG_MAX;
 		td->ts.lat_stat[i].min_val = ULONG_MAX;
 		td->ts.bw_stat[i].min_val = ULONG_MAX;
@@ -1459,7 +1460,7 @@ static int add_job(struct thread_data *td, const char *jobname, int job_add_num,
 			p.avg_msec = min(o->log_avg_msec, o->bw_avg_time);
 		else
 			o->bw_avg_time = p.avg_msec;
-	
+
 		p.hist_msec = o->log_hist_msec;
 		p.hist_coarseness = o->log_hist_coarseness;
 
@@ -1490,7 +1491,7 @@ static int add_job(struct thread_data *td, const char *jobname, int job_add_num,
 			p.avg_msec = min(o->log_avg_msec, o->iops_avg_time);
 		else
 			o->iops_avg_time = p.avg_msec;
-	
+
 		p.hist_msec = o->log_hist_msec;
 		p.hist_coarseness = o->log_hist_coarseness;
 
