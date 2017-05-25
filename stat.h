@@ -224,6 +224,10 @@ struct thread_stat {
 	fio_fp64_t ss_deviation;
 	fio_fp64_t ss_criterion;
 
+	uint32_t priorityBit;
+	uint32_t io_u_plat_prio[DDIR_RWDIR_CNT][FIO_IO_U_PLAT_NR];
+	struct io_stat clat_prio_stat[DDIR_RWDIR_CNT];
+
 	union {
 		uint64_t *ss_iops_data;
 		uint64_t pad4;
@@ -233,7 +237,7 @@ struct thread_stat {
 		uint64_t *ss_bw_data;
 		uint64_t pad5;
 	};
-} __attribute__((packed));
+}__attribute__((packed));
 
 struct jobs_eta {
 	uint32_t nr_running;
@@ -301,7 +305,7 @@ extern void add_clat_sample(struct thread_data *, enum fio_ddir, unsigned long,
 				unsigned int, uint64_t);
 extern void add_slat_sample(struct thread_data *, enum fio_ddir, unsigned long,
 				unsigned int, uint64_t);
-extern void add_agg_sample(union io_sample_data, enum fio_ddir, unsigned int);
+extern void add_agg_sample(union io_sample_data, enum fio_ddir, unsigned int, unsigned int);
 extern void add_iops_sample(struct thread_data *, struct io_u *,
 				unsigned int);
 extern void add_bw_sample(struct thread_data *, struct io_u *,

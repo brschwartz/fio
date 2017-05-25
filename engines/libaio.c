@@ -41,7 +41,7 @@ struct libaio_data {
 struct libaio_options {
 	void *pad;
 	unsigned int userspace_reap;
-    unsigned int prio_percent; 
+    unsigned int prio_percent;
 };
 
 static struct fio_option options[] = {
@@ -268,6 +268,7 @@ static int fio_libaio_commit(struct thread_data *td)
 		io_us = ld->io_us + ld->tail;
 		iocbs = ld->iocbs + ld->tail;
 
+
         if (fio_option_is_set(o, ioprio) ||
             fio_option_is_set(o, ioprio_class)) {
 
@@ -276,17 +277,25 @@ static int fio_libaio_commit(struct thread_data *td)
                     if ((rand()%100 >= eo->prio_percent) == 0) {
                         dprint(FD_IO, "Enable PRIO \n");
                         ioprio_set(IOPRIO_WHO_PROCESS, 0, o->ioprio_class, o->ioprio);
+                        io_us[0]->priorityBit = 1;
+
+
                     } else {
                         dprint(FD_IO, "Disable PRIO \n");
                         ioprio_set(IOPRIO_WHO_PROCESS, 0, 0, 0);
-                    } 
+                        io_us[0]->priorityBit = 0;
+                    }
                 }
             } else {
-                // This is here so if previous READ turned this off. 
-                // This will make sure the behavior is consistant. 
+                // This is here so if previous READ turned this off.
+                // This will make sure the behavior is consistant.
                 ioprio_set(IOPRIO_WHO_PROCESS, 0, o->ioprio_class, o->ioprio);
+                io_us[0]->priorityBit = 1;
             }
+
         }
+
+
 
         dprint(FD_IO, "Submitted %ld IO request blocks\n", nr);
 
