@@ -16,11 +16,16 @@
 #include <linux/unistd.h>
 #include <linux/raw.h>
 #include <linux/major.h>
-#include <byteswap.h>
+#include <linux/fs.h>
+#include <scsi/sg.h>
 
 #include "./os-linux-syscall.h"
 #include "binject.h"
 #include "../file.h"
+
+#ifndef __has_builtin         // Optional of course.
+  #define __has_builtin(x) 0  // Compatibility with non-clang compilers.
+#endif
 
 #define FIO_HAVE_CPU_AFFINITY
 #define FIO_HAVE_DISK_UTIL
@@ -219,21 +224,19 @@ static inline int fio_lookup_raw(dev_t dev, int *majdev, int *mindev)
 #define FIO_MADV_FREE	MADV_REMOVE
 #endif
 
-#if defined(__builtin_bswap16)
+/* Check for GCC or Clang byte swap intrinsics */
+#if (__has_builtin(__builtin_bswap16) && __has_builtin(__builtin_bswap32) \
+     && __has_builtin(__builtin_bswap64)) || (__GNUC__ > 4 \
+     || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)) /* fio_swapN */
 #define fio_swap16(x)	__builtin_bswap16(x)
-#else
-#define fio_swap16(x)	__bswap_16(x)
-#endif
-#if defined(__builtin_bswap32)
 #define fio_swap32(x)	__builtin_bswap32(x)
-#else
-#define fio_swap32(x)	__bswap_32(x)
-#endif
-#if defined(__builtin_bswap64)
 #define fio_swap64(x)	__builtin_bswap64(x)
 #else
-#define fio_swap64(x)	__bswap_64(x)
-#endif
+#include <byteswap.h>
+#define fio_swap16(x)	bswap_16(x)
+#define fio_swap32(x)	bswap_32(x)
+#define fio_swap64(x)	bswap_64(x)
+#endif /* fio_swapN */
 
 #define CACHE_LINE_FILE	\
 	"/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size"
@@ -256,6 +259,14 @@ static inline int arch_cache_line_size(void)
 	else
 		return atoi(size);
 }
+
+#ifdef __powerpc64__
+#define FIO_HAVE_CPU_ONLINE_SYSCONF
+static inline unsigned int cpus_online(void)
+{
+        return sysconf(_SC_NPROCESSORS_CONF);
+}
+#endif
 
 static inline unsigned long long get_fs_free_size(const char *path)
 {
@@ -313,9 +324,13 @@ static inline int fio_set_sched_idle(void)
 static inline void make_pos_h_l(unsigned long *pos_h, unsigned long *pos_l,
 				off_t offset)
 {
+#if BITS_PER_LONG == 64
+	*pos_l = offset;
+	*pos_h = 0;
+#else
 	*pos_l = offset & 0xffffffff;
 	*pos_h = ((uint64_t) offset) >> 32;
-
+#endif
 }
 static inline ssize_t preadv2(int fd, const struct iovec *iov, int iovcnt,
 			      off_t offset, unsigned int flags)

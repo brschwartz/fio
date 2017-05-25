@@ -35,6 +35,7 @@
 #include "oslib/getopt.h"
 #include "lib/rand.h"
 #include "lib/rbtree.h"
+#include "lib/num2str.h"
 #include "client.h"
 #include "server.h"
 #include "stat.h"
@@ -56,6 +57,10 @@
  * "local" is pseudo-policy
  */
 #define MPOL_LOCAL MPOL_MAX
+#endif
+
+#ifdef CONFIG_CUDA
+#include <cuda.h>
 #endif
 
 /*
@@ -100,6 +105,8 @@ enum {
 	FIO_DEDUPE_OFF,
 	FIO_RAND_POISSON_OFF,
 	FIO_RAND_ZONE_OFF,
+	FIO_RAND_POISSON2_OFF,
+	FIO_RAND_POISSON3_OFF,
 	FIO_RAND_NR_OFFS,
 };
 
@@ -143,7 +150,7 @@ struct thread_data {
 	unsigned int thread_number;
 	unsigned int subjob_number;
 	unsigned int groupid;
-	struct thread_stat ts;
+	struct thread_stat ts __attribute__ ((aligned));
 
 	int client_type;
 
@@ -282,8 +289,8 @@ struct thread_data {
 	unsigned long rate_blocks[DDIR_RWDIR_CNT];
 	unsigned long long rate_io_issue_bytes[DDIR_RWDIR_CNT];
 	struct timeval lastrate[DDIR_RWDIR_CNT];
-	int64_t last_usec;
-	struct frand_state poisson_state;
+	int64_t last_usec[DDIR_RWDIR_CNT];
+	struct frand_state poisson_state[DDIR_RWDIR_CNT];
 
 	/*
 	 * Enforced rate submission/completion workqueue
@@ -406,6 +413,18 @@ struct thread_data {
 	struct steadystate_data ss;
 
 	char verror[FIO_VERROR_SIZE];
+
+#ifdef CONFIG_CUDA
+	/*
+	 * for GPU memory management
+	 */
+	int gpu_dev_cnt;
+	int gpu_dev_id;
+	CUdevice  cu_dev;
+	CUcontext cu_ctx;
+	CUdeviceptr dev_mem_ptr;
+#endif	
+
 };
 
 /*
@@ -521,7 +540,6 @@ extern void fio_options_mem_dupe(struct thread_data *);
 extern void td_fill_rand_seeds(struct thread_data *);
 extern void td_fill_verify_state_seed(struct thread_data *);
 extern void add_job_opts(const char **, int);
-extern char *num2str(uint64_t, int, int, int, int);
 extern int ioengine_load(struct thread_data *);
 extern bool parse_dryrun(void);
 extern int fio_running_or_pending_io_threads(void);
@@ -533,13 +551,6 @@ extern uintptr_t page_mask;
 extern uintptr_t page_size;
 extern int initialize_fio(char *envp[]);
 extern void deinitialize_fio(void);
-
-#define N2S_NONE	0
-#define N2S_BITPERSEC 	1	/* match unit_base for bit rates */
-#define N2S_PERSEC	2
-#define N2S_BIT		3
-#define N2S_BYTE	4
-#define N2S_BYTEPERSEC 	8	/* match unit_base for byte rates */
 
 #define FIO_GETOPT_JOB		0x89000000
 #define FIO_GETOPT_IOENGINE	0x98000000
@@ -586,7 +597,8 @@ static inline enum fio_ioengine_flags td_ioengine_flags(struct thread_data *td)
 
 static inline void td_set_ioengine_flags(struct thread_data *td)
 {
-	td->flags |= (td->io_ops->flags << TD_ENG_FLAG_SHIFT);
+	td->flags = (~(TD_ENG_FLAG_MASK << TD_ENG_FLAG_SHIFT) & td->flags) |
+		    (td->io_ops->flags << TD_ENG_FLAG_SHIFT);
 }
 
 static inline bool td_ioengine_flagged(struct thread_data *td,
@@ -628,14 +640,6 @@ extern void free_threads_shm(void);
  * Reset stats after ramp time completes
  */
 extern void reset_all_stats(struct thread_data *);
-
-/*
- * blktrace support
- */
-#ifdef FIO_HAVE_BLKTRACE
-extern int is_blktrace(const char *, int *);
-extern int load_blktrace(struct thread_data *, const char *, int);
-#endif
 
 extern int io_queue_event(struct thread_data *td, struct io_u *io_u, int *ret,
 		   enum fio_ddir ddir, uint64_t *bytes_issued, int from_verify,

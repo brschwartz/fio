@@ -899,8 +899,9 @@ static int fill_io_u(struct thread_data *td, struct io_u *io_u)
 	}
 
 	if (io_u->offset + io_u->buflen > io_u->file->real_file_size) {
-		dprint(FD_IO, "io_u %p, offset too large\n", io_u);
-		dprint(FD_IO, "  off=%llu/%lu > %llu\n",
+		dprint(FD_IO, "io_u %p, offset + buflen exceeds file size\n",
+			io_u);
+		dprint(FD_IO, "  offset=%llu/buflen=%lu > %llu\n",
 			(unsigned long long) io_u->offset, io_u->buflen,
 			(unsigned long long) io_u->file->real_file_size);
 		return 1;
@@ -1673,8 +1674,10 @@ out:
 	if (!td_io_prep(td, io_u)) {
 		if (!td->o.disable_lat)
 			fio_gettime(&io_u->start_time, NULL);
+
 		if (do_scramble)
 			small_content_scramble(io_u);
+
 		return io_u;
 	}
 err_put:
@@ -2044,6 +2047,9 @@ void fill_io_buffer(struct thread_data *td, void *buf, unsigned int min_write,
 		    unsigned int max_bs)
 {
 	struct thread_options *o = &td->o;
+
+	if (o->mem_type == MEM_CUDA_MALLOC)
+		return;
 
 	if (o->compress_percentage || o->dedupe_percentage) {
 		unsigned int perc = td->o.compress_percentage;

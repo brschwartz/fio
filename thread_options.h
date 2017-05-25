@@ -20,6 +20,7 @@ enum fio_memtype {
 	MEM_MMAP,	/* use anonynomous mmap */
 	MEM_MMAPHUGE,	/* memory mapped huge file */
 	MEM_MMAPSHARED, /* use mmap with shared flag */
+	MEM_CUDA_MALLOC,/* use GPU memory */
 };
 
 #define ERROR_STR_MAX	128
@@ -198,6 +199,8 @@ struct thread_options {
 	unsigned short numa_mem_mode;
 	unsigned int numa_mem_prefer_node;
 	char *numa_memnodes;
+	unsigned int gpu_dev_id;
+
 	unsigned int iolog;
 	unsigned int rwmixcycle;
 	unsigned int rwmix[DDIR_RWDIR_CNT];
@@ -336,7 +339,6 @@ struct thread_options_pack {
 	uint32_t iodepth_batch;
 	uint32_t iodepth_batch_complete_min;
 	uint32_t iodepth_batch_complete_max;
-	uint32_t __proper_alignment_for_64b;
 
 	uint64_t size;
 	uint64_t io_size;
@@ -411,7 +413,6 @@ struct thread_options_pack {
 	uint32_t bs_unaligned;
 	uint32_t fsync_on_close;
 	uint32_t bs_is_seq_rand;
-	uint32_t pad1;
 
 	uint32_t random_distribution;
 	uint32_t exitall_error;
@@ -467,6 +468,8 @@ struct thread_options_pack {
 	uint8_t verify_cpumask[FIO_TOP_STR_MAX];
 	uint8_t log_gz_cpumask[FIO_TOP_STR_MAX];
 #endif
+	uint32_t gpu_dev_id;
+	uint32_t pad;
 	uint32_t cpus_allowed_policy;
 	uint32_t iolog;
 	uint32_t rwmixcycle;

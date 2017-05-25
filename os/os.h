@@ -60,11 +60,6 @@ typedef struct aiocb os_aiocb_t;
 #endif
 #endif
 
-#ifdef FIO_HAVE_SGIO
-#include <linux/fs.h>
-#include <scsi/sg.h>
-#endif
-
 #ifndef CONFIG_STRSEP
 #include "../oslib/strsep.h"
 #endif
@@ -253,19 +248,6 @@ static inline uint64_t fio_swap64(uint64_t val)
 	__cpu_to_le64(val);			\
 })
 
-#ifndef FIO_HAVE_BLKTRACE
-static inline int is_blktrace(const char *fname, int *need_swap)
-{
-	return 0;
-}
-struct thread_data;
-static inline int load_blktrace(struct thread_data *td, const char *fname,
-				int need_swap)
-{
-	return 1;
-}
-#endif
-
 #define FIO_DEF_CL_SIZE		128
 
 static inline int os_cache_line_size(void)
@@ -316,12 +298,7 @@ static inline long os_random_long(os_random_state_t *rs)
 #endif
 
 #ifdef FIO_USE_GENERIC_INIT_RANDOM_STATE
-extern void td_fill_rand_seeds(struct thread_data *td);
-/*
- * Initialize the various random states we need (random io, block size ranges,
- * read/write mix, etc).
- */
-static inline int init_random_state(struct thread_data *td, unsigned long *rand_seeds, int size)
+static inline int init_random_seeds(unsigned long *rand_seeds, int size)
 {
 	int fd;
 
@@ -336,7 +313,6 @@ static inline int init_random_state(struct thread_data *td, unsigned long *rand_
 	}
 
 	close(fd);
-	td_fill_rand_seeds(td);
 	return 0;
 }
 #endif
@@ -345,14 +321,6 @@ static inline int init_random_state(struct thread_data *td, unsigned long *rand_
 static inline unsigned long long get_fs_free_size(const char *path)
 {
 	return 0;
-}
-#endif
-
-#ifdef __powerpc64__
-#define FIO_HAVE_CPU_ONLINE_SYSCONF
-static inline unsigned int cpus_online(void)
-{
-        return sysconf(_SC_NPROCESSORS_CONF);
 }
 #endif
 
