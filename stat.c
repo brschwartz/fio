@@ -2442,7 +2442,7 @@ static void add_clat_percentile_sample(struct thread_stat *ts,
 		ts->priorityBit = 0;
 	}
 
-	if (!ts->priorityBit && ddir == DDIR_READ) {
+	else if (!ts->priorityBit && ddir == DDIR_READ) {
 
 		ts->io_u_plat_low_prio[ddir][idx]++;
 	}
