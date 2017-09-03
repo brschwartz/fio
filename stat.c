@@ -775,7 +775,7 @@ static void show_thread_status_normal(struct thread_stat *ts,
 
 	if (!ddir_rw_sum(ts->io_bytes) && !ddir_rw_sum(ts->total_io_u))
 		return;
-		
+
 	memset(time_buf, 0, sizeof(time_buf));
 
 	time(&time_p);
@@ -2464,21 +2464,18 @@ void add_agg_sample(union io_sample_data data, enum fio_ddir ddir, unsigned int 
 }
 
 static void add_clat_percentile_sample(struct thread_stat *ts,
-				unsigned long long nsec, enum fio_ddir ddir)
+				unsigned long long nsec, enum fio_ddir ddir, unsigned int priorityBit)
 {
 	unsigned int idx = plat_val_to_idx(nsec);
 	assert(idx < FIO_IO_U_PLAT_NR);
 
 	ts->io_u_plat[ddir][idx]++;
 
-	if (ts->priorityBit && ddir == DDIR_READ) {
-
+	if (priorityBit && ddir == DDIR_READ) {
 		ts->io_u_plat_prio[ddir][idx]++;
-		ts->priorityBit = 0;
 	}
 
-	else if (!ts->priorityBit && ddir == DDIR_READ) {
-
+	else if (!priorityBit && ddir == DDIR_READ) {
 		ts->io_u_plat_low_prio[ddir][idx]++;
 	}
 
@@ -2486,7 +2483,7 @@ static void add_clat_percentile_sample(struct thread_stat *ts,
 }
 
 void add_clat_sample(struct thread_data *td, enum fio_ddir ddir,
-		     unsigned long long nsec, unsigned int bs, uint64_t offset)
+		     unsigned long long nsec, unsigned int bs, uint64_t offset, unsigned int priorityBit)
 {
 	unsigned long elapsed, this_window;
 	struct thread_stat *ts = &td->ts;
@@ -2495,11 +2492,11 @@ void add_clat_sample(struct thread_data *td, enum fio_ddir ddir,
 	td_io_u_lock(td);
 
 	add_stat_sample(&ts->clat_stat[ddir], nsec);
-if (td->priorityBit && ddir == DDIR_READ) {
+if (priorityBit && ddir == DDIR_READ) {
 		add_stat_sample(&ts->clat_prio_stat[ddir], nsec);
 	}
 
-	if (!td->priorityBit && ddir == DDIR_READ) {
+	if (!priorityBit && ddir == DDIR_READ) {
 		add_stat_sample(&ts->clat_low_prio_stat[ddir], nsec);
 	}
 
@@ -2508,10 +2505,7 @@ if (td->priorityBit && ddir == DDIR_READ) {
 			       offset);
 
 	if (ts->clat_percentiles) {
-		if (td->priorityBit && ddir == DDIR_READ) {
-			ts->priorityBit = td->priorityBit;
-		}
-		add_clat_percentile_sample(ts, nsec, ddir);
+		add_clat_percentile_sample(ts, nsec, ddir, priorityBit);
 	}
 
 	if (iolog && iolog->hist_msec) {
@@ -2522,7 +2516,7 @@ if (td->priorityBit && ddir == DDIR_READ) {
 		if (!hw->hist_last)
 			hw->hist_last = elapsed;
 		this_window = elapsed - hw->hist_last;
-		
+
 		if (this_window >= iolog->hist_msec) {
 			unsigned int *io_u_plat;
 			struct io_u_plat_entry *dst;

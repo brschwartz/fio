@@ -307,7 +307,7 @@ extern void clear_rusage_stat(struct thread_data *);
 extern void add_lat_sample(struct thread_data *, enum fio_ddir, unsigned long long,
 				unsigned int, uint64_t);
 extern void add_clat_sample(struct thread_data *, enum fio_ddir, unsigned long long,
-				unsigned int, uint64_t);
+				unsigned int, uint64_t, unsigned int);
 extern void add_slat_sample(struct thread_data *, enum fio_ddir, unsigned long,
 				unsigned int, uint64_t);
 extern void add_agg_sample(union io_sample_data, enum fio_ddir, unsigned int, unsigned int);
