@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/sysctl.h>
 #include <sys/disk.h>
+#include <sys/endian.h>
 #include <sys/thr.h>
 #include <sys/socket.h>
 #include <sys/param.h>
@@ -116,7 +117,7 @@ static inline unsigned long long get_fs_free_size(const char *path)
 	return ret;
 }
 
-static inline int os_trim(int fd, unsigned long long start,
+static inline int os_trim(struct fio_file *f, unsigned long long start,
 			  unsigned long long len)
 {
 	off_t range[2];
@@ -124,7 +125,7 @@ static inline int os_trim(int fd, unsigned long long start,
 	range[0] = start;
 	range[1] = len;
 
-	if (!ioctl(fd, DIOCGDELETE, range))
+	if (!ioctl(f->fd, DIOCGDELETE, range))
 		return 0;
 
 	return errno;

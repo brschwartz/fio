@@ -87,10 +87,13 @@ enum {
 	TD_F_CHILD		= 1U << 12,
 	TD_F_NO_PROGRESS        = 1U << 13,
 	TD_F_REGROW_LOGS	= 1U << 14,
+	TD_F_MMAP_KEEP		= 1U << 15,
 };
 
 enum {
 	FIO_RAND_BS_OFF		= 0,
+	FIO_RAND_BS1_OFF,
+	FIO_RAND_BS2_OFF,
 	FIO_RAND_VER_OFF,
 	FIO_RAND_MIX_OFF,
 	FIO_RAND_FILE_OFF,
@@ -150,7 +153,7 @@ struct thread_data {
 	unsigned int thread_number;
 	unsigned int subjob_number;
 	unsigned int groupid;
-	struct thread_stat ts __attribute__ ((aligned));
+	struct thread_stat ts __attribute__ ((aligned(8)));
 
 	int client_type;
 
@@ -166,10 +169,10 @@ struct thread_data {
 	struct thread_data *parent;
 
 	uint64_t stat_io_bytes[DDIR_RWDIR_CNT];
-	struct timeval bw_sample_time;
+	struct timespec bw_sample_time;
 
 	uint64_t stat_io_blocks[DDIR_RWDIR_CNT];
-	struct timeval iops_sample_time;
+	struct timespec iops_sample_time;
 
 	volatile int update_rusage;
 	struct fio_mutex *rusage_sem;
@@ -215,7 +218,7 @@ struct thread_data {
 
 	unsigned long rand_seeds[FIO_RAND_NR_OFFS];
 
-	struct frand_state bsrange_state;
+	struct frand_state bsrange_state[DDIR_RWDIR_CNT];
 	struct frand_state verify_state;
 	struct frand_state trim_state;
 	struct frand_state delay_state;
@@ -288,7 +291,7 @@ struct thread_data {
 	unsigned long rate_bytes[DDIR_RWDIR_CNT];
 	unsigned long rate_blocks[DDIR_RWDIR_CNT];
 	unsigned long long rate_io_issue_bytes[DDIR_RWDIR_CNT];
-	struct timeval lastrate[DDIR_RWDIR_CNT];
+	struct timespec lastrate[DDIR_RWDIR_CNT];
 	int64_t last_usec[DDIR_RWDIR_CNT];
 	struct frand_state poisson_state[DDIR_RWDIR_CNT];
 
@@ -324,21 +327,21 @@ struct thread_data {
 	 */
 	struct frand_state random_state;
 
-	struct timeval start;	/* start of this loop */
-	struct timeval epoch;	/* time job was started */
+	struct timespec start;	/* start of this loop */
+	struct timespec epoch;	/* time job was started */
 	unsigned long long unix_epoch; /* Time job was started, unix epoch based. */
-	struct timeval last_issue;
+	struct timespec last_issue;
 	long time_offset;
-	struct timeval tv_cache;
-	struct timeval terminate_time;
-	unsigned int tv_cache_nr;
-	unsigned int tv_cache_mask;
+	struct timespec ts_cache;
+	struct timespec terminate_time;
+	unsigned int ts_cache_nr;
+	unsigned int ts_cache_mask;
 	unsigned int ramp_time_over;
 
 	/*
 	 * Time since last latency_window was started
 	 */
-	struct timeval latency_ts;
+	struct timespec latency_ts;
 	unsigned int latency_qd;
 	unsigned int latency_qd_high;
 	unsigned int latency_qd_low;
@@ -643,7 +646,7 @@ extern void reset_all_stats(struct thread_data *);
 
 extern int io_queue_event(struct thread_data *td, struct io_u *io_u, int *ret,
 		   enum fio_ddir ddir, uint64_t *bytes_issued, int from_verify,
-		   struct timeval *comp_time);
+		   struct timespec *comp_time);
 
 /*
  * Latency target helpers

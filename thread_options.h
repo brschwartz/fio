@@ -53,6 +53,7 @@ struct thread_options {
 	char *filename_format;
 	char *opendir;
 	char *ioengine;
+	char *ioengine_so_path;
 	char *mmapfile;
 	enum td_ddir td_ddir;
 	unsigned int rw_seq;
@@ -65,6 +66,7 @@ struct thread_options {
 	unsigned int iodepth_batch;
 	unsigned int iodepth_batch_complete_min;
 	unsigned int iodepth_batch_complete_max;
+	unsigned int serialize_overlap;
 
 	unsigned int unique_filename;
 
@@ -102,6 +104,7 @@ struct thread_options {
 	unsigned int end_fsync;
 	unsigned int pre_read;
 	unsigned int sync_io;
+	unsigned int write_hint;
 	unsigned int verify;
 	unsigned int do_verify;
 	unsigned int verifysort;
@@ -200,6 +203,7 @@ struct thread_options {
 	unsigned int numa_mem_prefer_node;
 	char *numa_memnodes;
 	unsigned int gpu_dev_id;
+	unsigned int start_offset_percent;
 
 	unsigned int iolog;
 	unsigned int rwmixcycle;
@@ -304,7 +308,6 @@ struct thread_options {
 	fio_fp64_t latency_percentile;
 
 	unsigned block_error_hist;
-	unsigned int skip_bad;
 
 	unsigned int replay_align;
 	unsigned int replay_scale;
@@ -339,6 +342,8 @@ struct thread_options_pack {
 	uint32_t iodepth_batch;
 	uint32_t iodepth_batch_complete_min;
 	uint32_t iodepth_batch_complete_max;
+	uint32_t serialize_overlap;
+	uint32_t pad3;
 
 	uint64_t size;
 	uint64_t io_size;
@@ -375,6 +380,7 @@ struct thread_options_pack {
 	uint32_t end_fsync;
 	uint32_t pre_read;
 	uint32_t sync_io;
+	uint32_t write_hint;
 	uint32_t verify;
 	uint32_t do_verify;
 	uint32_t verifysort;
@@ -416,6 +422,7 @@ struct thread_options_pack {
 
 	uint32_t random_distribution;
 	uint32_t exitall_error;
+	uint32_t pad;
 
 	struct zone_split zone_split[DDIR_RWDIR_CNT][ZONESPLIT_MAX];
 	uint32_t zone_split_nr[DDIR_RWDIR_CNT];
@@ -469,7 +476,7 @@ struct thread_options_pack {
 	uint8_t log_gz_cpumask[FIO_TOP_STR_MAX];
 #endif
 	uint32_t gpu_dev_id;
-	uint32_t pad;
+	uint32_t start_offset_percent;
 	uint32_t cpus_allowed_policy;
 	uint32_t iolog;
 	uint32_t rwmixcycle;
@@ -575,7 +582,6 @@ struct thread_options_pack {
 	fio_fp64_t latency_percentile;
 
 	uint32_t block_error_hist;
-	uint32_t skip_bad;
 
 	uint32_t replay_align;
 	uint32_t replay_scale;

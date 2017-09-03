@@ -271,6 +271,7 @@ static void dump_buf(char *buf, unsigned int len, unsigned long long offset,
 	fd = open(fname, O_CREAT | O_TRUNC | O_WRONLY, 0644);
 	if (fd < 0) {
 		perror("open verify buf file");
+		free(ptr);
 		return;
 	}
 
@@ -387,7 +388,7 @@ static int verify_io_u_pattern(struct verify_header *hdr, struct vcont *vc)
 	(void)paste_format_inplace(pattern, pattern_size,
 				   td->o.verify_fmt, td->o.verify_fmt_sz, io_u);
 
-	buf = (void *) hdr + header_size;
+	buf = (char *) hdr + header_size;
 	len = get_hdr_inc(td, io_u) - header_size;
 	mod = (get_hdr_inc(td, io_u) * vc->hdr_num + header_size) % pattern_size;
 
@@ -1166,7 +1167,7 @@ static void __fill_hdr(struct thread_data *td, struct io_u *io_u,
 	hdr->rand_seed = rand_seed;
 	hdr->offset = io_u->offset + header_num * td->o.verify_interval;
 	hdr->time_sec = io_u->start_time.tv_sec;
-	hdr->time_usec = io_u->start_time.tv_usec;
+	hdr->time_usec = io_u->start_time.tv_nsec / 1000;
 	hdr->thread = td->thread_number;
 	hdr->numberio = io_u->numberio;
 	hdr->crc32 = fio_crc32c(p, offsetof(struct verify_header, crc32));
@@ -1187,9 +1188,10 @@ static void populate_hdr(struct thread_data *td, struct io_u *io_u,
 			 unsigned int header_len)
 {
 	unsigned int data_len;
-	void *data, *p;
+	void *data;
+	char *p;
 
-	p = (void *) hdr;
+	p = (char *) hdr;
 
 	fill_hdr(td, io_u, hdr, header_num, header_len, io_u->rand_seed);
 

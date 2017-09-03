@@ -20,7 +20,7 @@ struct io_completion_data {
 
 	int error;			/* output */
 	uint64_t bytes_done[DDIR_RWDIR_CNT];	/* output */
-	struct timeval time;		/* output */
+	struct timespec time;		/* output */
 };
 
 /*
@@ -552,9 +552,9 @@ static unsigned int __get_next_buflen(struct thread_data *td, struct io_u *io_u,
 	if (!io_u_fits(td, io_u, minbs))
 		return 0;
 
-	frand_max = rand_max(&td->bsrange_state);
+	frand_max = rand_max(&td->bsrange_state[ddir]);
 	do {
-		r = __rand(&td->bsrange_state);
+		r = __rand(&td->bsrange_state[ddir]);
 
 		if (!td->o.bssplit_nr[ddir]) {
 			buflen = 1 + (unsigned int) ((double) maxbs *
@@ -989,11 +989,52 @@ void io_u_mark_depth(struct thread_data *td, unsigned int nr)
 	td->ts.io_u_map[idx] += nr;
 }
 
-static void io_u_mark_lat_usec(struct thread_data *td, unsigned long usec)
+static void io_u_mark_lat_nsec(struct thread_data *td, unsigned long long nsec)
 {
 	int idx = 0;
 
-	assert(usec < 1000);
+	assert(nsec < 1000);
+
+	switch (nsec) {
+	case 750 ... 999:
+		idx = 9;
+		break;
+	case 500 ... 749:
+		idx = 8;
+		break;
+	case 250 ... 499:
+		idx = 7;
+		break;
+	case 100 ... 249:
+		idx = 6;
+		break;
+	case 50 ... 99:
+		idx = 5;
+		break;
+	case 20 ... 49:
+		idx = 4;
+		break;
+	case 10 ... 19:
+		idx = 3;
+		break;
+	case 4 ... 9:
+		idx = 2;
+		break;
+	case 2 ... 3:
+		idx = 1;
+	case 0 ... 1:
+		break;
+	}
+
+	assert(idx < FIO_IO_U_LAT_N_NR);
+	td->ts.io_u_lat_n[idx]++;
+}
+
+static void io_u_mark_lat_usec(struct thread_data *td, unsigned long long usec)
+{
+	int idx = 0;
+
+	assert(usec < 1000 && usec >= 1);
 
 	switch (usec) {
 	case 750 ... 999:
@@ -1030,9 +1071,11 @@ static void io_u_mark_lat_usec(struct thread_data *td, unsigned long usec)
 	td->ts.io_u_lat_u[idx]++;
 }
 
-static void io_u_mark_lat_msec(struct thread_data *td, unsigned long msec)
+static void io_u_mark_lat_msec(struct thread_data *td, unsigned long long msec)
 {
 	int idx = 0;
+
+	assert(msec >= 1);
 
 	switch (msec) {
 	default:
@@ -1075,12 +1118,14 @@ static void io_u_mark_lat_msec(struct thread_data *td, unsigned long msec)
 	td->ts.io_u_lat_m[idx]++;
 }
 
-static void io_u_mark_latency(struct thread_data *td, unsigned long usec)
+static void io_u_mark_latency(struct thread_data *td, unsigned long long nsec)
 {
-	if (usec < 1000)
-		io_u_mark_lat_usec(td, usec);
+	if (nsec < 1000)
+		io_u_mark_lat_nsec(td, nsec);
+	else if (nsec < 1000000)
+		io_u_mark_lat_usec(td, nsec / 1000);
 	else
-		io_u_mark_lat_msec(td, usec / 1000);
+		io_u_mark_lat_msec(td, nsec / 1000000);
 }
 
 static unsigned int __get_next_fileno_rand(struct thread_data *td)
@@ -1557,7 +1602,7 @@ static void small_content_scramble(struct io_u *io_u)
 	unsigned int i, nr_blocks = io_u->buflen / 512;
 	uint64_t boffset;
 	unsigned int offset;
-	void *p, *end;
+	char *p, *end;
 
 	if (!nr_blocks)
 		return;
@@ -1572,7 +1617,7 @@ static void small_content_scramble(struct io_u *io_u)
 		 * the buffer, given by the product of the usec time
 		 * and the actual offset.
 		 */
-		offset = (io_u->start_time.tv_usec ^ boffset) & 511;
+		offset = ((io_u->start_time.tv_nsec/1000) ^ boffset) & 511;
 		offset &= ~(sizeof(uint64_t) - 1);
 		if (offset >= 512 - sizeof(uint64_t))
 			offset -= sizeof(uint64_t);
@@ -1729,7 +1774,7 @@ static void account_io_completion(struct thread_data *td, struct io_u *io_u,
 				  const enum fio_ddir idx, unsigned int bytes)
 {
 	const int no_reduce = !gtod_reduce(td);
-	unsigned long lusec = 0;
+	unsigned long long llnsec = 0;
 
 	if (td->parent)
 		td = td->parent;
@@ -1740,38 +1785,38 @@ static void account_io_completion(struct thread_data *td, struct io_u *io_u,
 		return;
 
 	if (no_reduce)
-		lusec = utime_since(&io_u->issue_time, &icd->time);
+		llnsec = ntime_since(&io_u->issue_time, &icd->time);
 
 	if (!td->o.disable_lat) {
-		unsigned long tusec;
+		unsigned long long tnsec;
 
-		tusec = utime_since(&io_u->start_time, &icd->time);
-		add_lat_sample(td, idx, tusec, bytes, io_u->offset);
+		tnsec = ntime_since(&io_u->start_time, &icd->time);
+		add_lat_sample(td, idx, tnsec, bytes, io_u->offset);
 
 		if (td->flags & TD_F_PROFILE_OPS) {
 			struct prof_io_ops *ops = &td->prof_io_ops;
 
 			if (ops->io_u_lat)
-				icd->error = ops->io_u_lat(td, tusec);
+				icd->error = ops->io_u_lat(td, tnsec/1000);
 		}
 
-		if (td->o.max_latency && tusec > td->o.max_latency)
-			lat_fatal(td, icd, tusec, td->o.max_latency);
-		if (td->o.latency_target && tusec > td->o.latency_target) {
+		if (td->o.max_latency && tnsec/1000 > td->o.max_latency)
+			lat_fatal(td, icd, tnsec/1000, td->o.max_latency);
+		if (td->o.latency_target && tnsec/1000 > td->o.latency_target) {
 			if (lat_target_failed(td))
-				lat_fatal(td, icd, tusec, td->o.latency_target);
+				lat_fatal(td, icd, tnsec/1000, td->o.latency_target);
 		}
 	}
 
 	if (ddir_rw(idx)) {
 
 		if (!td->o.disable_clat) {
-			add_clat_sample(td, idx, lusec, bytes, io_u->offset);
-			io_u_mark_latency(td, lusec);
+			add_clat_sample(td, idx, llnsec, bytes, io_u->offset);
+			io_u_mark_latency(td, llnsec);
 		}
 
 		if (!td->o.disable_bw && per_unit_log(td->bw_log))
-			add_bw_sample(td, io_u, bytes, lusec);
+			add_bw_sample(td, io_u, bytes, llnsec);
 
 		if (no_reduce && per_unit_log(td->iops_log))
 			add_iops_sample(td, io_u, bytes);
@@ -2003,7 +2048,7 @@ void io_u_queued(struct thread_data *td, struct io_u *io_u)
 	if (!td->o.disable_slat && ramp_time_over(td) && td->o.stats) {
 		unsigned long slat_time;
 
-		slat_time = utime_since(&io_u->start_time, &io_u->issue_time);
+		slat_time = ntime_since(&io_u->start_time, &io_u->issue_time);
 
 		if (td->parent)
 			td = td->parent;
@@ -2146,7 +2191,7 @@ int do_io_u_trim(const struct thread_data *td, struct io_u *io_u)
 	struct fio_file *f = io_u->file;
 	int ret;
 
-	ret = os_trim(f->fd, io_u->offset, io_u->xfer_buflen);
+	ret = os_trim(f, io_u->offset, io_u->xfer_buflen);
 	if (!ret)
 		return io_u->xfer_buflen;
 

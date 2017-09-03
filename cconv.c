@@ -96,6 +96,7 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->iodepth_batch = le32_to_cpu(top->iodepth_batch);
 	o->iodepth_batch_complete_min = le32_to_cpu(top->iodepth_batch_complete_min);
 	o->iodepth_batch_complete_max = le32_to_cpu(top->iodepth_batch_complete_max);
+	o->serialize_overlap = le32_to_cpu(top->serialize_overlap);
 	o->size = le64_to_cpu(top->size);
 	o->io_size = le64_to_cpu(top->io_size);
 	o->size_percent = le32_to_cpu(top->size_percent);
@@ -104,6 +105,7 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->file_size_low = le64_to_cpu(top->file_size_low);
 	o->file_size_high = le64_to_cpu(top->file_size_high);
 	o->start_offset = le64_to_cpu(top->start_offset);
+	o->start_offset_percent = le32_to_cpu(top->start_offset_percent);
 
 	for (i = 0; i < DDIR_RWDIR_CNT; i++) {
 		o->bs[i] = le32_to_cpu(top->bs[i]);
@@ -155,6 +157,7 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->end_fsync = le32_to_cpu(top->end_fsync);
 	o->pre_read = le32_to_cpu(top->pre_read);
 	o->sync_io = le32_to_cpu(top->sync_io);
+	o->write_hint = le32_to_cpu(top->write_hint);
 	o->verify = le32_to_cpu(top->verify);
 	o->do_verify = le32_to_cpu(top->do_verify);
 	o->verifysort = le32_to_cpu(top->verifysort);
@@ -281,7 +284,6 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->compress_percentage = le32_to_cpu(top->compress_percentage);
 	o->compress_chunk = le32_to_cpu(top->compress_chunk);
 	o->dedupe_percentage = le32_to_cpu(top->dedupe_percentage);
-	o->skip_bad = le32_to_cpu(top->skip_bad);
 	o->block_error_hist = le32_to_cpu(top->block_error_hist);
 	o->replay_align = le32_to_cpu(top->replay_align);
 	o->replay_scale = le32_to_cpu(top->replay_scale);
@@ -345,6 +347,7 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	top->iodepth_batch = cpu_to_le32(o->iodepth_batch);
 	top->iodepth_batch_complete_min = cpu_to_le32(o->iodepth_batch_complete_min);
 	top->iodepth_batch_complete_max = cpu_to_le32(o->iodepth_batch_complete_max);
+	top->serialize_overlap = cpu_to_le32(o->serialize_overlap);
 	top->size_percent = cpu_to_le32(o->size_percent);
 	top->fill_device = cpu_to_le32(o->fill_device);
 	top->file_append = cpu_to_le32(o->file_append);
@@ -364,6 +367,7 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	top->end_fsync = cpu_to_le32(o->end_fsync);
 	top->pre_read = cpu_to_le32(o->pre_read);
 	top->sync_io = cpu_to_le32(o->sync_io);
+	top->write_hint = cpu_to_le32(o->write_hint);
 	top->verify = cpu_to_le32(o->verify);
 	top->do_verify = cpu_to_le32(o->do_verify);
 	top->verifysort = cpu_to_le32(o->verifysort);
@@ -468,7 +472,6 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	top->compress_chunk = cpu_to_le32(o->compress_chunk);
 	top->dedupe_percentage = cpu_to_le32(o->dedupe_percentage);
 	top->block_error_hist = cpu_to_le32(o->block_error_hist);
-	top->skip_bad = cpu_to_le32(o->skip_bad);
 	top->replay_align = cpu_to_le32(o->replay_align);
 	top->replay_scale = cpu_to_le32(o->replay_scale);
 	top->per_job_logs = cpu_to_le32(o->per_job_logs);
@@ -543,6 +546,7 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	top->file_size_low = __cpu_to_le64(o->file_size_low);
 	top->file_size_high = __cpu_to_le64(o->file_size_high);
 	top->start_offset = __cpu_to_le64(o->start_offset);
+	top->start_offset_percent = __cpu_to_le32(o->start_offset_percent);
 	top->trim_backlog = __cpu_to_le64(o->trim_backlog);
 	top->offset_increment = __cpu_to_le64(o->offset_increment);
 	top->number_ios = __cpu_to_le64(o->number_ios);

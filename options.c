@@ -270,7 +270,8 @@ static int str2error(char *str)
 	return 0;
 }
 
-static int ignore_error_type(struct thread_data *td, int etype, char *str)
+static int ignore_error_type(struct thread_data *td, enum error_type_bit etype,
+				char *str)
 {
 	unsigned int i;
 	int *error;
@@ -282,7 +283,7 @@ static int ignore_error_type(struct thread_data *td, int etype, char *str)
 	}
 
 	td->o.ignore_error_nr[etype] = 4;
-	error = malloc(4 * sizeof(struct bssplit));
+	error = calloc(4, sizeof(int));
 
 	i = 0;
 	while ((fname = strsep(&str, ":")) != NULL) {
@@ -306,8 +307,9 @@ static int ignore_error_type(struct thread_data *td, int etype, char *str)
 				error[i] = -error[i];
 		}
 		if (!error[i]) {
-			log_err("Unknown error %s, please use number value \n",
+			log_err("Unknown error %s, please use number value\n",
 				  fname);
+			td->o.ignore_error_nr[etype] = 0;
 			free(error);
 			return 1;
 		}
@@ -317,8 +319,10 @@ static int ignore_error_type(struct thread_data *td, int etype, char *str)
 		td->o.continue_on_error |= 1 << etype;
 		td->o.ignore_error_nr[etype] = i;
 		td->o.ignore_error[etype] = error;
-	} else
+	} else {
+		td->o.ignore_error_nr[etype] = 0;
 		free(error);
+	}
 
 	return 0;
 
@@ -328,7 +332,8 @@ static int str_ignore_error_cb(void *data, const char *input)
 {
 	struct thread_data *td = cb_data_to_td(data);
 	char *str, *p, *n;
-	int type = 0, ret = 1;
+	int ret = 1;
+	enum error_type_bit type = 0;
 
 	if (parse_dryrun())
 		return 0;
@@ -1376,7 +1381,23 @@ static int str_gtod_reduce_cb(void *data, int *il)
 	td->o.disable_bw = !!val;
 	td->o.clat_percentiles = !val;
 	if (val)
-		td->tv_cache_mask = 63;
+		td->ts_cache_mask = 63;
+
+	return 0;
+}
+
+static int str_offset_cb(void *data, unsigned long long *__val)
+{
+	struct thread_data *td = cb_data_to_td(data);
+	unsigned long long v = *__val;
+
+	if (parse_is_percent(v)) {
+		td->o.start_offset = 0;
+		td->o.start_offset_percent = -1ULL - v;
+		dprint(FD_PARSE, "SET start_offset_percent %d\n",
+					td->o.start_offset_percent);
+	} else
+		td->o.start_offset = v;
 
 	return 0;
 }
@@ -1389,6 +1410,8 @@ static int str_size_cb(void *data, unsigned long long *__val)
 	if (parse_is_percent(v)) {
 		td->o.size = 0;
 		td->o.size_percent = -1ULL - v;
+		dprint(FD_PARSE, "SET size_percent %d\n",
+					td->o.size_percent);
 	} else
 		td->o.size = v;
 
@@ -1436,6 +1459,39 @@ static int str_write_hist_log_cb(void *data, const char *str)
 		td->o.hist_log_file = strdup(str);
 
 	td->o.write_hist_log = 1;
+	return 0;
+}
+
+/*
+ * str is supposed to be a substring of the strdup'd original string,
+ * and is valid only if it's a regular file path.
+ * This function keeps the pointer to the path as needed later.
+ *
+ * "external:/path/to/so\0" <- original pointer updated with strdup'd
+ * "external\0"             <- above pointer after parsed, i.e. ->ioengine
+ *          "/path/to/so\0" <- str argument, i.e. ->ioengine_so_path
+ */
+static int str_ioengine_external_cb(void *data, const char *str)
+{
+	struct thread_data *td = cb_data_to_td(data);
+	struct stat sb;
+	char *p;
+
+	if (!str) {
+		log_err("fio: null external ioengine path\n");
+		return 1;
+	}
+
+	p = (char *)str; /* str is mutable */
+	strip_blank_front(&p);
+	strip_blank_end(p);
+
+	if (stat(p, &sb) || !S_ISREG(sb.st_mode)) {
+		log_err("fio: invalid external ioengine path \"%s\"\n", p);
+		return 1;
+	}
+
+	td->o.ioengine_so_path = p;
 	return 0;
 }
 
@@ -1789,6 +1845,7 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 #endif
 			  { .ival = "external",
 			    .help = "Load external engine (append name)",
+			    .cb = str_ioengine_external_cb,
 			  },
 		},
 	},
@@ -1855,6 +1912,17 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.parent	= "iodepth",
 		.hide	= 1,
 		.interval = 1,
+		.category = FIO_OPT_C_IO,
+		.group	= FIO_OPT_G_IO_BASIC,
+	},
+	{
+		.name	= "serialize_overlap",
+		.lname	= "Serialize overlap",
+		.off1	= offsetof(struct thread_options, serialize_overlap),
+		.type	= FIO_OPT_BOOL,
+		.help	= "Wait for in-flight IOs that collide to complete",
+		.parent	= "iodepth",
+		.def	= "0",
 		.category = FIO_OPT_C_IO,
 		.group	= FIO_OPT_G_IO_BASIC,
 	},
@@ -1938,6 +2006,7 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.lname	= "IO offset",
 		.alias	= "fileoffset",
 		.type	= FIO_OPT_STR_VAL,
+		.cb	= str_offset_cb,
 		.off1	= offsetof(struct thread_options, start_offset),
 		.help	= "Start IO from this offset",
 		.def	= "0",
@@ -2245,9 +2314,13 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 			    .oval = FIO_FSERVICE_PARETO,
 			    .help = "Pareto randomized",
 			  },
+			  { .ival = "normal",
+			    .oval = FIO_FSERVICE_GAUSS,
+			    .help = "Normal (Gaussian) randomized",
+			  },
 			  { .ival = "gauss",
 			    .oval = FIO_FSERVICE_GAUSS,
-			    .help = "Normal (Gaussian) distribution",
+			    .help = "Alias for normal",
 			  },
 			  { .ival = "roundrobin",
 			    .oval = FIO_FSERVICE_RR,
@@ -2261,14 +2334,14 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.parent = "nrfiles",
 		.hide	= 1,
 	},
-#ifdef CONFIG_POSIX_FALLOCATE
+#ifdef FIO_HAVE_ANY_FALLOCATE
 	{
 		.name	= "fallocate",
 		.lname	= "Fallocate",
 		.type	= FIO_OPT_STR,
 		.off1	= offsetof(struct thread_options, fallocate_mode),
 		.help	= "Whether pre-allocation is performed when laying out files",
-		.def	= "posix",
+		.def	= "native",
 		.category = FIO_OPT_C_FILE,
 		.group	= FIO_OPT_G_INVALID,
 		.posval	= {
@@ -2276,10 +2349,16 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 			    .oval = FIO_FALLOCATE_NONE,
 			    .help = "Do not pre-allocate space",
 			  },
+			  { .ival = "native",
+			    .oval = FIO_FALLOCATE_NATIVE,
+			    .help = "Use native pre-allocation if possible",
+			  },
+#ifdef CONFIG_POSIX_FALLOCATE
 			  { .ival = "posix",
 			    .oval = FIO_FALLOCATE_POSIX,
 			    .help = "Use posix_fallocate()",
 			  },
+#endif
 #ifdef CONFIG_LINUX_FALLOCATE
 			  { .ival = "keep",
 			    .oval = FIO_FALLOCATE_KEEP_SIZE,
@@ -2291,20 +2370,22 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 			    .oval = FIO_FALLOCATE_NONE,
 			    .help = "Alias for 'none'",
 			  },
+#ifdef CONFIG_POSIX_FALLOCATE
 			  { .ival = "1",
 			    .oval = FIO_FALLOCATE_POSIX,
 			    .help = "Alias for 'posix'",
 			  },
+#endif
 		},
 	},
-#else	/* CONFIG_POSIX_FALLOCATE */
+#else	/* FIO_HAVE_ANY_FALLOCATE */
 	{
 		.name	= "fallocate",
 		.lname	= "Fallocate",
 		.type	= FIO_OPT_UNSUPPORTED,
 		.help	= "Your platform does not support fallocate",
 	},
-#endif /* CONFIG_POSIX_FALLOCATE */
+#endif /* FIO_HAVE_ANY_FALLOCATE */
 	{
 		.name	= "fadvise_hint",
 		.lname	= "Fadvise hint",
@@ -2333,24 +2414,6 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.category = FIO_OPT_C_FILE,
 		.group	= FIO_OPT_G_INVALID,
 	},
-#ifdef FIO_HAVE_STREAMID
-	{
-		.name	= "fadvise_stream",
-		.lname	= "Fadvise stream",
-		.type	= FIO_OPT_INT,
-		.off1	= offsetof(struct thread_options, fadvise_stream),
-		.help	= "Use fadvise() to set stream ID",
-		.category = FIO_OPT_C_FILE,
-		.group	= FIO_OPT_G_INVALID,
-	},
-#else
-	{
-		.name	= "fadvise_stream",
-		.lname	= "Fadvise stream",
-		.type	= FIO_OPT_UNSUPPORTED,
-		.help	= "Your platform does not support fadvise stream ID",
-	},
-#endif
 	{
 		.name	= "fsync",
 		.lname	= "Fsync",
@@ -3412,6 +3475,34 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.category = FIO_OPT_C_IO,
 		.group	= FIO_OPT_G_IO_TYPE,
 	},
+#ifdef FIO_HAVE_WRITE_HINT
+	{
+		.name	= "write_hint",
+		.lname	= "Write hint",
+		.type	= FIO_OPT_STR,
+		.off1	= offsetof(struct thread_options, write_hint),
+		.help	= "Set expected write life time",
+		.category = FIO_OPT_C_ENGINE,
+		.group	= FIO_OPT_G_INVALID,
+		.posval = {
+			  { .ival = "none",
+			    .oval = RWH_WRITE_LIFE_NONE,
+			  },
+			  { .ival = "short",
+			    .oval = RWH_WRITE_LIFE_SHORT,
+			  },
+			  { .ival = "medium",
+			    .oval = RWH_WRITE_LIFE_MEDIUM,
+			  },
+			  { .ival = "long",
+			    .oval = RWH_WRITE_LIFE_LONG,
+			  },
+			  { .ival = "extreme",
+			    .oval = RWH_WRITE_LIFE_EXTREME,
+			  },
+		},
+	},
+#endif
 	{
 		.name	= "create_serialize",
 		.lname	= "Create serialize",
@@ -4331,17 +4422,6 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.def	= "0",
 		.category = FIO_OPT_C_IO,
 		.group	= FIO_OPT_G_IO_FLOW,
-	},
-	{
-		.name	= "skip_bad",
-		.lname	= "Skip operations against bad blocks",
-		.type	= FIO_OPT_BOOL,
-		.off1	= offsetof(struct thread_options, skip_bad),
-		.help	= "Skip operations against known bad blocks.",
-		.hide	= 1,
-		.def	= "0",
-		.category = FIO_OPT_C_IO,
-		.group	= FIO_OPT_G_MTD,
 	},
 	{
 		.name   = "steadystate",

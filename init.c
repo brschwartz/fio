@@ -361,7 +361,7 @@ static int setup_thread_area(void)
 #endif
 
 	memset(threads, 0, max_jobs * sizeof(struct thread_data));
-	fio_debug_jobp = (void *) threads + max_jobs * sizeof(struct thread_data);
+	fio_debug_jobp = (unsigned int *)(threads + max_jobs);
 	*fio_debug_jobp = -1;
 
 	flow_init();
@@ -698,6 +698,23 @@ static int fixup_options(struct thread_data *td)
 	if (o->iodepth_batch_complete_min > o->iodepth_batch_complete_max)
 		o->iodepth_batch_complete_max = o->iodepth_batch_complete_min;
 
+	/*
+	 * There's no need to check for in-flight overlapping IOs if the job
+	 * isn't changing data or the maximum iodepth is guaranteed to be 1
+	 */
+	if (o->serialize_overlap && !(td->flags & TD_F_READ_IOLOG) &&
+	    (!(td_write(td) || td_trim(td)) || o->iodepth == 1))
+		o->serialize_overlap = 0;
+	/*
+	 * Currently can't check for overlaps in offload mode
+	 */
+	if (o->serialize_overlap && o->io_submit_mode == IO_MODE_OFFLOAD) {
+		log_err("fio: checking for in-flight overlaps when the "
+			"io_submit_mode is offload is not supported\n");
+		o->serialize_overlap = 0;
+		ret = warnings_fatal;
+	}
+
 	if (o->nr_files > td->files_index)
 		o->nr_files = td->files_index;
 
@@ -731,10 +748,27 @@ static int fixup_options(struct thread_data *td)
 		o->size = -1ULL;
 
 	if (o->verify != VERIFY_NONE) {
-		if (td_write(td) && o->do_verify && o->numjobs > 1) {
-			log_info("Multiple writers may overwrite blocks that "
-				"belong to other jobs. This can cause "
+		if (td_write(td) && o->do_verify && o->numjobs > 1 &&
+		    (o->filename ||
+		     !(o->unique_filename &&
+		       strstr(o->filename_format, "$jobname") &&
+		       strstr(o->filename_format, "$jobnum") &&
+		       strstr(o->filename_format, "$filenum")))) {
+			log_info("fio: multiple writers may overwrite blocks "
+				"that belong to other jobs. This can cause "
 				"verification failures.\n");
+			ret = warnings_fatal;
+		}
+
+		/*
+		 * Warn if verification is requested but no verification of any
+		 * kind can be started due to time constraints
+		 */
+		if (td_write(td) && o->do_verify && o->timeout &&
+		    o->time_based && !td_read(td) && !o->verify_backlog) {
+			log_info("fio: verification read phase will never "
+				 "start because write phase uses all of "
+				 "runtime\n");
 			ret = warnings_fatal;
 		}
 
@@ -780,6 +814,11 @@ static int fixup_options(struct thread_data *td)
 		else
 			o->unit_base = 8;
 	}
+
+#ifndef FIO_HAVE_ANY_FALLOCATE
+	/* Platform doesn't support any fallocate so force it to none */
+	o->fallocate_mode = FIO_FALLOCATE_NONE;
+#endif
 
 #ifndef CONFIG_FDATASYNC
 	if (o->fdatasync_blocks) {
@@ -873,20 +912,6 @@ static int fixup_options(struct thread_data *td)
 	return ret;
 }
 
-/* External engines are specified by "external:name.o") */
-static const char *get_engine_name(const char *str)
-{
-	char *p = strstr(str, ":");
-
-	if (!p)
-		return str;
-
-	p++;
-	strip_blank_front(&p);
-	strip_blank_end(p);
-	return p;
-}
-
 static void init_rand_file_service(struct thread_data *td)
 {
 	unsigned long nranges = td->o.nr_files << FIO_FSERVICE_SHIFT;
@@ -909,9 +934,9 @@ void td_fill_verify_state_seed(struct thread_data *td)
 	bool use64;
 
 	if (td->o.random_generator == FIO_RAND_GEN_TAUSWORTHE64)
-		use64 = 1;
+		use64 = true;
 	else
-		use64 = 0;
+		use64 = false;
 
 	init_rand_seed(&td->verify_state, td->rand_seeds[FIO_RAND_VER_OFF],
 		use64);
@@ -921,7 +946,22 @@ static void td_fill_rand_seeds_internal(struct thread_data *td, bool use64)
 {
 	int i;
 
-	init_rand_seed(&td->bsrange_state, td->rand_seeds[FIO_RAND_BS_OFF], use64);
+	/*
+	 * trimwrite is special in that we need to generate the same
+	 * offsets to get the "write after trim" effect. If we are
+	 * using bssplit to set buffer length distributions, ensure that
+	 * we seed the trim and write generators identically.
+	 */
+	if (td_trimwrite(td)) {
+		init_rand_seed(&td->bsrange_state[DDIR_READ], td->rand_seeds[FIO_RAND_BS_OFF], use64);
+		init_rand_seed(&td->bsrange_state[DDIR_WRITE], td->rand_seeds[FIO_RAND_BS1_OFF], use64);
+		init_rand_seed(&td->bsrange_state[DDIR_TRIM], td->rand_seeds[FIO_RAND_BS1_OFF], use64);
+	} else {
+		init_rand_seed(&td->bsrange_state[DDIR_READ], td->rand_seeds[FIO_RAND_BS_OFF], use64);
+		init_rand_seed(&td->bsrange_state[DDIR_WRITE], td->rand_seeds[FIO_RAND_BS1_OFF], use64);
+		init_rand_seed(&td->bsrange_state[DDIR_TRIM], td->rand_seeds[FIO_RAND_BS2_OFF], use64);
+	}
+
 	td_fill_verify_state_seed(td);
 	init_rand_seed(&td->rwmix_state, td->rand_seeds[FIO_RAND_MIX_OFF], false);
 
@@ -967,9 +1007,9 @@ void td_fill_rand_seeds(struct thread_data *td)
 	}
 
 	if (td->o.random_generator == FIO_RAND_GEN_TAUSWORTHE64)
-		use64 = 1;
+		use64 = true;
 	else
-		use64 = 0;
+		use64 = false;
 
 	td_fill_rand_seeds_internal(td, use64);
 
@@ -983,22 +1023,27 @@ void td_fill_rand_seeds(struct thread_data *td)
  */
 int ioengine_load(struct thread_data *td)
 {
-	const char *engine;
-
-	/*
-	 * Engine has already been loaded.
-	 */
-	if (td->io_ops)
-		return 0;
 	if (!td->o.ioengine) {
 		log_err("fio: internal fault, no IO engine specified\n");
 		return 1;
 	}
 
-	engine = get_engine_name(td->o.ioengine);
-	td->io_ops = load_ioengine(td, engine);
+	if (td->io_ops) {
+		/* An engine is loaded, but the requested ioengine
+		 * may have changed.
+		 */
+		if (!strcmp(td->io_ops->name, td->o.ioengine)) {
+			/* The right engine is already loaded */
+			return 0;
+		}
+
+		/* Unload the old engine. */
+		free_ioengine(td);
+	}
+
+	td->io_ops = load_ioengine(td);
 	if (!td->io_ops) {
-		log_err("fio: failed to load engine %s\n", engine);
+		log_err("fio: failed to load engine\n");
 		return 1;
 	}
 
@@ -1366,6 +1411,7 @@ static int add_job(struct thread_data *td, const char *jobname, int job_add_num,
 		td->ts.slat_stat[i].min_val = ULONG_MAX;
 		td->ts.lat_stat[i].min_val = ULONG_MAX;
 		td->ts.bw_stat[i].min_val = ULONG_MAX;
+		td->ts.iops_stat[i].min_val = ULONG_MAX;
 	}
 	td->ddir_seq_nr = o->ddir_seq_nr;
 
@@ -2023,7 +2069,7 @@ static void usage(const char *name)
 	printf("  --version\t\tPrint version info and exit\n");
 	printf("  --help\t\tPrint this page\n");
 	printf("  --cpuclock-test\tPerform test/validation of CPU clock\n");
-	printf("  --crctest=type\tTest speed of checksum functions\n");
+	printf("  --crctest=[type]\tTest speed of checksum functions\n");
 	printf("  --cmdhelp=cmd\t\tPrint command help, \"all\" for all of"
 		" them\n");
 	printf("  --enghelp=engine\tPrint ioengine help, or list"
@@ -2405,8 +2451,7 @@ int parse_cmd_line(int argc, char *argv[], int client_type)
 			break;
 		case 'V':
 			terse_version = atoi(optarg);
-			if (!(terse_version == 2 || terse_version == 3 ||
-			     terse_version == 4)) {
+			if (!(terse_version >= 2 && terse_version <= 5)) {
 				log_err("fio: bad terse version format\n");
 				exit_val = 1;
 				do_exit++;
@@ -2517,7 +2562,6 @@ int parse_cmd_line(int argc, char *argv[], int client_type)
 			}
 
 			if (!ret && !strcmp(opt, "ioengine")) {
-				free_ioengine(td);
 				if (ioengine_load(td)) {
 					put_job(td);
 					td = NULL;

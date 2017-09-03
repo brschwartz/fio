@@ -15,6 +15,7 @@
 #include "os/os.h"
 #include "hash.h"
 #include "lib/axmap.h"
+#include "lib/memalign.h"
 
 #ifdef CONFIG_LINUX_FALLOCATE
 #include <linux/falloc.h>
@@ -38,14 +39,78 @@ static inline void clear_error(struct thread_data *td)
 	td->verror[0] = '\0';
 }
 
+static inline int native_fallocate(struct thread_data *td, struct fio_file *f)
+{
+	bool success;
+
+	success = fio_fallocate(f, 0, f->real_file_size);
+	dprint(FD_FILE, "native fallocate of file %s size %llu was "
+			"%ssuccessful\n", f->file_name,
+			(unsigned long long) f->real_file_size,
+			!success ? "un": "");
+
+	if (success)
+		return 0;
+
+	if (errno == ENOSYS)
+		dprint(FD_FILE, "native fallocate is not implemented\n");
+
+	return -1;
+}
+
+static void fallocate_file(struct thread_data *td, struct fio_file *f)
+{
+	int r;
+
+	if (td->o.fill_device)
+		return;
+
+	switch (td->o.fallocate_mode) {
+	case FIO_FALLOCATE_NATIVE:
+		r = native_fallocate(td, f);
+		if (r != 0 && errno != ENOSYS)
+			log_err("fio: native_fallocate call failed: %s\n",
+					strerror(errno));
+		break;
+	case FIO_FALLOCATE_NONE:
+		break;
+#ifdef CONFIG_POSIX_FALLOCATE
+	case FIO_FALLOCATE_POSIX:
+		dprint(FD_FILE, "posix_fallocate file %s size %llu\n",
+				 f->file_name,
+				 (unsigned long long) f->real_file_size);
+
+		r = posix_fallocate(f->fd, 0, f->real_file_size);
+		if (r > 0)
+			log_err("fio: posix_fallocate fails: %s\n", strerror(r));
+		break;
+#endif /* CONFIG_POSIX_FALLOCATE */
+#ifdef CONFIG_LINUX_FALLOCATE
+	case FIO_FALLOCATE_KEEP_SIZE:
+		dprint(FD_FILE, "fallocate(FALLOC_FL_KEEP_SIZE) "
+				"file %s size %llu\n", f->file_name,
+				(unsigned long long) f->real_file_size);
+
+		r = fallocate(f->fd, FALLOC_FL_KEEP_SIZE, 0, f->real_file_size);
+		if (r != 0)
+			td_verror(td, errno, "fallocate");
+
+		break;
+#endif /* CONFIG_LINUX_FALLOCATE */
+	default:
+		log_err("fio: unknown fallocate mode: %d\n", td->o.fallocate_mode);
+		assert(0);
+	}
+}
+
 /*
  * Leaves f->fd open on success, caller must close
  */
 static int extend_file(struct thread_data *td, struct fio_file *f)
 {
-	int r, new_layout = 0, unlink_file = 0, flags;
+	int new_layout = 0, unlink_file = 0, flags;
 	unsigned long long left;
-	unsigned int bs;
+	unsigned int bs, alloc_size = 0;
 	char *b = NULL;
 
 	if (read_only) {
@@ -82,6 +147,8 @@ static int extend_file(struct thread_data *td, struct fio_file *f)
 		flags |= O_CREAT;
 	if (new_layout)
 		flags |= O_TRUNC;
+	if (td->o.odirect)
+		flags |= OS_O_DIRECT;
 
 #ifdef WIN32
 	flags |= _O_BINARY;
@@ -95,48 +162,18 @@ static int extend_file(struct thread_data *td, struct fio_file *f)
 		if (err == ENOENT && !td->o.allow_create)
 			log_err("fio: file creation disallowed by "
 					"allow_file_create=0\n");
-		else
+		else {
+			if (err == EINVAL && (flags & OS_O_DIRECT))
+				log_err("fio: looks like your filesystem "
+					"does not support "
+					"direct=1/buffered=0\n");
+
 			td_verror(td, err, "open");
+		}
 		return 1;
 	}
 
-#ifdef CONFIG_POSIX_FALLOCATE
-	if (!td->o.fill_device) {
-		switch (td->o.fallocate_mode) {
-		case FIO_FALLOCATE_NONE:
-			break;
-		case FIO_FALLOCATE_POSIX:
-			dprint(FD_FILE, "posix_fallocate file %s size %llu\n",
-				 f->file_name,
-				 (unsigned long long) f->real_file_size);
-
-			r = posix_fallocate(f->fd, 0, f->real_file_size);
-			if (r > 0) {
-				log_err("fio: posix_fallocate fails: %s\n",
-						strerror(r));
-			}
-			break;
-#ifdef CONFIG_LINUX_FALLOCATE
-		case FIO_FALLOCATE_KEEP_SIZE:
-			dprint(FD_FILE,
-				"fallocate(FALLOC_FL_KEEP_SIZE) "
-				"file %s size %llu\n", f->file_name,
-				(unsigned long long) f->real_file_size);
-
-			r = fallocate(f->fd, FALLOC_FL_KEEP_SIZE, 0,
-					f->real_file_size);
-			if (r != 0)
-				td_verror(td, errno, "fallocate");
-
-			break;
-#endif /* CONFIG_LINUX_FALLOCATE */
-		default:
-			log_err("fio: unknown fallocate mode: %d\n",
-				td->o.fallocate_mode);
-			assert(0);
-		}
-	}
-#endif /* CONFIG_POSIX_FALLOCATE */
+	fallocate_file(td, f);
 
 	/*
 	 * If our jobs don't require regular files initially, we're done.
@@ -159,18 +196,24 @@ static int extend_file(struct thread_data *td, struct fio_file *f)
 		}
 	}
 
+	if (td->o.odirect && !OS_O_DIRECT && fio_set_directio(td, f))
+		goto err;
+
 	left = f->real_file_size;
 	bs = td->o.max_bs[DDIR_WRITE];
 	if (bs > left)
 		bs = left;
 
-	b = malloc(bs);
+	alloc_size = bs;
+	b = fio_memalign(page_size, alloc_size);
 	if (!b) {
-		td_verror(td, errno, "malloc");
+		td_verror(td, errno, "fio_memalign");
 		goto err;
 	}
 
 	while (left && !td->terminate) {
+		ssize_t r;
+
 		if (bs > left)
 			bs = left;
 
@@ -217,14 +260,14 @@ static int extend_file(struct thread_data *td, struct fio_file *f)
 			f->io_size = f->real_file_size;
 	}
 
-	free(b);
+	fio_memfree(b, alloc_size);
 done:
 	return 0;
 err:
 	close(f->fd);
 	f->fd = -1;
 	if (b)
-		free(b);
+		fio_memfree(b, alloc_size);
 	return 1;
 }
 
@@ -497,8 +540,6 @@ static int __file_invalidate_cache(struct thread_data *td, struct fio_file *f,
 		}
 		if (ret < 0)
 			errval = errno;
-		else if (ret) /* probably not supported */
-			errval = ret;
 	} else if (f->filetype == FIO_TYPE_CHAR ||
 		   f->filetype == FIO_TYPE_PIPE) {
 		dprint(FD_IO, "invalidate not supported %s\n", f->file_name);
@@ -833,12 +874,42 @@ static unsigned long long get_fs_free_counts(struct thread_data *td)
 uint64_t get_start_offset(struct thread_data *td, struct fio_file *f)
 {
 	struct thread_options *o = &td->o;
+	unsigned long long align_bs;
+	unsigned long long offset;
 
 	if (o->file_append && f->filetype == FIO_TYPE_FILE)
 		return f->real_file_size;
 
-	return td->o.start_offset +
-		td->subjob_number * td->o.offset_increment;
+	if (o->start_offset_percent > 0) {
+		/*
+		 * if blockalign is provided, find the min across read, write,
+		 * and trim
+		 */
+		if (fio_option_is_set(o, ba)) {
+			align_bs = (unsigned long long) min(o->ba[DDIR_READ], o->ba[DDIR_WRITE]);
+			align_bs = min((unsigned long long) o->ba[DDIR_TRIM], align_bs);
+		} else {
+			/* else take the minimum block size */
+			align_bs = td_min_bs(td);
+		}
+
+		/* calculate the raw offset */
+		offset = (f->real_file_size * o->start_offset_percent / 100) +
+			(td->subjob_number * o->offset_increment);
+
+		/*
+		 * block align the offset at the next available boundary at
+		 * ceiling(offset / align_bs) * align_bs
+		 */
+		offset = (offset / align_bs + (offset % align_bs != 0)) * align_bs;
+
+	} else {
+		/* start_offset_percent not set */
+		offset = o->start_offset +
+				td->subjob_number * o->offset_increment;
+	}
+
+	return offset;
 }
 
 /*
@@ -986,7 +1057,14 @@ int setup_files(struct thread_data *td)
 			total_size = -1ULL;
 		else {
                         if (o->size_percent) {
-				f->io_size = (f->io_size * o->size_percent) / 100;
+				uint64_t file_size;
+
+				file_size = f->io_size + f->file_offset;
+				f->io_size = (file_size *
+					      o->size_percent) / 100;
+				if (f->io_size > (file_size - f->file_offset))
+					f->io_size = file_size - f->file_offset;
+
 				f->io_size -= (f->io_size % td_min_bs(td));
 			}
 			total_size += f->io_size;
@@ -1777,4 +1855,32 @@ bool fio_files_done(struct thread_data *td)
 void filesetup_mem_free(void)
 {
 	free_already_allocated();
+}
+
+/*
+ * This function is for platforms which support direct I/O but not O_DIRECT.
+ */
+int fio_set_directio(struct thread_data *td, struct fio_file *f)
+{
+#ifdef FIO_OS_DIRECTIO
+	int ret = fio_set_odirect(f);
+
+	if (ret) {
+		td_verror(td, ret, "fio_set_directio");
+#if defined(__sun__)
+		if (ret == ENOTTY) { /* ENOTTY suggests RAW device or ZFS */
+			log_err("fio: doing directIO to RAW devices or ZFS not supported\n");
+		} else {
+			log_err("fio: the file system does not seem to support direct IO\n");
+		}
+#else
+		log_err("fio: the file system does not seem to support direct IO\n");
+#endif
+		return -1;
+	}
+
+	return 0;
+#else
+	return -1;
+#endif
 }

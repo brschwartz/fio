@@ -697,8 +697,7 @@ if test "$libverbs" != "yes" ; then
   libverbs="no"
 fi
 cat > $TMPC << EOF
-#include <stdio.h>
-#include <infiniband/arch.h>
+#include <infiniband/verbs.h>
 int main(int argc, char **argv)
 {
   struct ibv_pd *pd = ibv_alloc_pd(NULL);
@@ -1483,12 +1482,16 @@ int main(int argc, char **argv)
 {
   rados_t cluster;
   rados_ioctx_t io_ctx;
+  const char cluster_name[] = "ceph";
+  const char user_name[] = "client.admin";
   const char pool[] = "rbd";
-
   int major, minor, extra;
-  rbd_version(&major, &minor, &extra);
 
+  rbd_version(&major, &minor, &extra);
+  /* The rados_create2 signature required was only introduced in ceph 0.65 */
+  rados_create2(&cluster, cluster_name, user_name, 0);
   rados_ioctx_create(cluster, pool, &io_ctx);
+
   return 0;
 }
 EOF
@@ -1971,6 +1974,25 @@ fi
 print_config "bool" "$have_bool"
 
 ##########################################
+# Check whether we have strndup()
+strndup="no"
+cat > $TMPC << EOF
+#include <string.h>
+#include <stdlib.h>
+int main(int argc, char **argv)
+{
+  char *res = strndup("test string", 8);
+
+  free(res);
+  return 0;
+}
+EOF
+if compile_prog "" "" "strndup"; then
+  strndup="yes"
+fi
+print_config "strndup" "$strndup"
+
+##########################################
 # check march=armv8-a+crc+crypto
 if test "$march_armv8_a_crc_crypto" != "yes" ; then
   march_armv8_a_crc_crypto="no"
@@ -2226,6 +2248,9 @@ if test "$static_assert" = "yes" ; then
 fi
 if test "$have_bool" = "yes" ; then
   output_sym "CONFIG_HAVE_BOOL"
+fi
+if test "$strndup" = "yes" ; then
+  output_sym "CONFIG_HAVE_STRNDUP"
 fi
 if test "$disable_opt" = "yes" ; then
   output_sym "CONFIG_DISABLE_OPTIMIZATIONS"
