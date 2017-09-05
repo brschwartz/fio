@@ -2474,7 +2474,6 @@ static void add_clat_percentile_sample(struct thread_stat *ts,
 	if (priorityBit && ddir == DDIR_READ) {
 		ts->io_u_plat_prio[ddir][idx]++;
 	}
-
 	else if (!priorityBit && ddir == DDIR_READ) {
 		ts->io_u_plat_low_prio[ddir][idx]++;
 	}
@@ -2492,7 +2491,7 @@ void add_clat_sample(struct thread_data *td, enum fio_ddir ddir,
 	td_io_u_lock(td);
 
 	add_stat_sample(&ts->clat_stat[ddir], nsec);
-if (priorityBit && ddir == DDIR_READ) {
+	if (priorityBit && ddir == DDIR_READ) {
 		add_stat_sample(&ts->clat_prio_stat[ddir], nsec);
 	}
 

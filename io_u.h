@@ -153,9 +153,9 @@ static inline void dprint_io_u(struct io_u *io_u, const char *p)
 {
 	struct fio_file *f = io_u->file;
 
-	dprint(FD_IO, "%s: io_u %p: off=%llu/len=%lu/ddir=%d", p, io_u,
+	dprint(FD_IO, "%s: io_u %p: off=%llu/len=%lu/ddir=%d/prio=%u", p, io_u,
 					(unsigned long long) io_u->offset,
-					io_u->buflen, io_u->ddir);
+					io_u->buflen, io_u->ddir, io_u->priorityBit);
 	if (f)
 		dprint(FD_IO, "/%s", f->file_name);
 	dprint(FD_IO, "\n");
