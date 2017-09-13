@@ -155,6 +155,8 @@ struct thread_stat {
 	 * bandwidth and latency stats
 	 */
 	struct io_stat clat_stat[DDIR_RWDIR_CNT]; /* completion latency */
+	struct io_stat clat_stat_prio[DDIR_RWDIR_CNT]; /* completion latency */
+	struct io_stat clat_stat_low_prio[DDIR_RWDIR_CNT]; /* completion latency */
 	struct io_stat slat_stat[DDIR_RWDIR_CNT]; /* submission latency */
 	struct io_stat lat_stat[DDIR_RWDIR_CNT]; /* total latency */
 	struct io_stat bw_stat[DDIR_RWDIR_CNT]; /* bandwidth stats */
@@ -181,6 +183,8 @@ struct thread_stat {
 	uint32_t io_u_lat_u[FIO_IO_U_LAT_U_NR];
 	uint32_t io_u_lat_m[FIO_IO_U_LAT_M_NR];
 	uint32_t io_u_plat[DDIR_RWDIR_CNT][FIO_IO_U_PLAT_NR];
+	uint32_t io_u_plat_prio[DDIR_RWDIR_CNT][FIO_IO_U_PLAT_NR];
+	uint32_t io_u_plat_low_prio[DDIR_RWDIR_CNT][FIO_IO_U_PLAT_NR];
 	uint32_t pad;
 
 	uint64_t total_io_u[DDIR_RWDIR_CNT];
@@ -298,7 +302,7 @@ extern void clear_rusage_stat(struct thread_data *);
 extern void add_lat_sample(struct thread_data *, enum fio_ddir, unsigned long,
 				unsigned int, uint64_t);
 extern void add_clat_sample(struct thread_data *, enum fio_ddir, unsigned long,
-				unsigned int, uint64_t);
+				unsigned int, uint64_t, unsigned int);
 extern void add_slat_sample(struct thread_data *, enum fio_ddir, unsigned long,
 				unsigned int, uint64_t);
 extern void add_agg_sample(union io_sample_data, enum fio_ddir, unsigned int);

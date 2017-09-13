@@ -41,6 +41,7 @@ struct libaio_data {
 struct libaio_options {
 	void *pad;
 	unsigned int userspace_reap;
+	unsigned int prio_percent;
 };
 
 static struct fio_option options[] = {
@@ -50,6 +51,17 @@ static struct fio_option options[] = {
 		.type	= FIO_OPT_STR_SET,
 		.off1	= offsetof(struct libaio_options, userspace_reap),
 		.help	= "Use alternative user-space reap implementation",
+		.category = FIO_OPT_C_ENGINE,
+		.group	= FIO_OPT_G_LIBAIO,
+	},
+	{
+		.name	= "prio_percent",
+		.lname	= "prio percentage",
+		.type	= FIO_OPT_INT,
+		.off1	= offsetof(struct libaio_options, prio_percent),
+		.minval	= 1,
+		.maxval	= 100,
+		.help	= "Split the prioclass setting for IO",
 		.category = FIO_OPT_C_ENGINE,
 		.group	= FIO_OPT_G_LIBAIO,
 	},
@@ -70,6 +82,7 @@ static inline void ring_inc(struct libaio_data *ld, unsigned int *val,
 static int fio_libaio_prep(struct thread_data fio_unused *td, struct io_u *io_u)
 {
 	struct fio_file *f = io_u->file;
+	struct libaio_options *eo = td->eo;
 	unsigned int ioprio;
 
 	if (io_u->ddir == DDIR_READ)
@@ -80,10 +93,24 @@ static int fio_libaio_prep(struct thread_data fio_unused *td, struct io_u *io_u)
 		io_prep_fsync(&io_u->iocb, f->fd);
 
 	ioprio = td->o.cmnd_ioprio_class << IOPRIO_CLASS_SHIFT;
-	if (ioprio){
-		ioprio |= td->o.cmnd_ioprio;
-		io_u->iocb.aio_reqprio = ioprio;
-		io_u->iocb.__pad2 = RWF_IOPRI;
+
+	if (ioprio && io_u->ddir == DDIR_READ){
+		if (eo->prio_percent) {
+            if ((rand()%100 >= eo->prio_percent) == 0) {
+                dprint(FD_IO, "Enable PRIO \n");
+
+                ioprio |= td->o.cmnd_ioprio;
+				io_u->iocb.aio_reqprio = ioprio;
+				io_u->iocb.__pad2 = RWF_IOPRI;
+
+
+            } else {
+                dprint(FD_IO, "Disable PRIO \n");
+				io_u->iocb.aio_reqprio = 0;
+				io_u->iocb.__pad2 = 0;
+            }
+        }
+
 	}
 
 	return 0;
