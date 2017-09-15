@@ -1034,7 +1034,7 @@ static void add_ddir_status_json(struct thread_stat *ts,
 			mean = dev = 0.0;
 		}
 		tmp_object = json_create_object();
-		json_object_add_value_object(dir_object, "clat_prio", tmp_object);
+		json_object_add_value_object(dir_object, "clat_low_prio", tmp_object);
 		json_object_add_value_int(tmp_object, "min", min);
 		json_object_add_value_int(tmp_object, "max", max);
 		json_object_add_value_float(tmp_object, "mean", mean);
@@ -2435,11 +2435,13 @@ void add_clat_sample(struct thread_data *td, enum fio_ddir ddir,
 
 	add_stat_sample(&ts->clat_stat[ddir], usec);
 
-	if (priority && ddir == DDIR_READ)
+	if (priority && ddir == DDIR_READ) {
 		add_stat_sample(&ts->clat_stat_prio[ddir], usec);
+	}
 
-	if (!priority && ddir == DDIR_READ)
+	if (!priority && ddir == DDIR_READ) {
 		add_stat_sample(&ts->clat_stat_low_prio[ddir], usec);
+	}
 
 
 	if (td->clat_log)
